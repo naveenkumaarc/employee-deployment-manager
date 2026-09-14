@@ -5,7 +5,16 @@ import sys
 from pathlib import Path
 
 from PySide6.QtCore import QByteArray, QBuffer, QIODevice, QRectF, Qt
-from PySide6.QtGui import (\n    QBrush, QColor, QIcon, QImage, QLinearGradient, QPainter, QPainterPath, QPen\n)
+from PySide6.QtGui import (
+    QBrush,
+    QColor,
+    QIcon,
+    QImage,
+    QLinearGradient,
+    QPainter,
+    QPainterPath,
+    QPen,
+)
 
 APP_ICON_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
 <defs>
