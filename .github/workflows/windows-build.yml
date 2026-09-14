@@ -35,14 +35,17 @@ jobs:
       - name: Build executable
         run: python -m PyInstaller --noconfirm --clean DeploymentDesk.spec
 
-      - name: Package download
+      - name: Prepare download
         shell: pwsh
-        run: Compress-Archive -Path dist\DeploymentDesk.exe, README.md -DestinationPath dist\DeploymentDesk-Windows.zip
+        run: |
+          New-Item -ItemType Directory -Force -Path package
+          Copy-Item dist\DeploymentDesk.exe package\DeploymentDesk.exe
+          Copy-Item README.md package\README.md
 
       - name: Upload Windows app
         uses: actions/upload-artifact@v4
         with:
           name: DeploymentDesk-Windows
-          path: dist/DeploymentDesk-Windows.zip
+          path: package/*
           if-no-files-found: error
           retention-days: 30
