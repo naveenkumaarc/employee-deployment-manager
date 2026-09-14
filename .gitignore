@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+
+# Application data and exports
+*.db
+*.db-shm
+*.db-wal
+*.xlsx
+DeploymentDesk_Backup_*
+
+# Build output
+build/
+dist/
+*.spec.bak
+
+# Editors and operating systems
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

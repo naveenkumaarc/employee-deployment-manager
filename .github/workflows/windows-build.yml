@@ -1,0 +1,48 @@
+name: Build Windows app
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
+
+      - name: Generate application icons
+        run: python tools/generate_icons.py
+
+      - name: Run tests
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m pytest -q
+
+      - name: Build executable
+        run: python -m PyInstaller --noconfirm --clean DeploymentDesk.spec
+
+      - name: Package download
+        shell: pwsh
+        run: Compress-Archive -Path dist\DeploymentDesk.exe, README.md -DestinationPath dist\DeploymentDesk-Windows.zip
+
+      - name: Upload Windows app
+        uses: actions/upload-artifact@v4
+        with:
+          name: DeploymentDesk-Windows
+          path: dist/DeploymentDesk-Windows.zip
+          if-no-files-found: error
+          retention-days: 30
