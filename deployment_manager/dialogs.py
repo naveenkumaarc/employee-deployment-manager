@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QDialogButtonBox,
+    QDoubleSpinBox,
     QFormLayout,
     QFrame,
     QHBoxLayout,
@@ -31,7 +32,14 @@ from PySide6.QtWidgets import (
 
 from .database import Database
 from .theme import COLORS
-from .widgets import make_button, make_date_edit, make_table, set_combo_value
+from .widgets import (
+    AdaptiveComboBox,
+    format_currency,
+    make_button,
+    make_date_edit,
+    make_table,
+    set_combo_value,
+)
 
 EMPLOYEE_COLORS = [
     ("Indigo", "#526DFE"),
@@ -137,7 +145,7 @@ class MasterEditorDialog(QDialog):
         return widget
 
     def _customer_combo(self) -> QComboBox:
-        combo = QComboBox()
+        combo = AdaptiveComboBox()
         combo.addItem("Select customer", None)
         for row in self.database.list_master("customer", active_only=False):
             suffix = "" if row["active"] else " (inactive)"
@@ -156,7 +164,7 @@ class MasterEditorDialog(QDialog):
             for key, label, widget in specs:
                 self.fields[key] = widget
                 self.form.addRow(label, widget)
-            color = QComboBox()
+            color = AdaptiveComboBox()
             for name, value in EMPLOYEE_COLORS:
                 color.addItem(name, value)
                 index = color.count() - 1
@@ -442,7 +450,8 @@ class DeploymentDialog(QDialog):
         title.setObjectName("PageTitle")
         outer.addWidget(title)
         subtitle = QLabel(
-            "Assign one or several employees to a customer project and site."
+            "Assign one or several employees to a customer project and site. "
+            "A day rate applies separately to every selected employee."
             if not self.record
             else "Update this employee's deployment record."
         )
@@ -466,7 +475,7 @@ class DeploymentDialog(QDialog):
         form.addRow("Deployment date *", self.work_date)
 
         if self.record:
-            self.employee_combo = QComboBox()
+            self.employee_combo = AdaptiveComboBox()
             for row in database.list_master("employee", active_only=False):
                 suffix = "" if row["active"] else " (inactive)"
                 self.employee_combo.addItem(row["name"] + suffix, row["id"])
@@ -488,7 +497,7 @@ class DeploymentDialog(QDialog):
                 self.employee_list.addItem(item)
             form.addRow("Employees *", self.employee_list)
 
-        self.customer = QComboBox()
+        self.customer = AdaptiveComboBox()
         self.customer.addItem("Select customer", None)
         for row in database.list_master(
             "customer", active_only=not bool(self.record)
@@ -498,8 +507,8 @@ class DeploymentDialog(QDialog):
         self.customer.currentIndexChanged.connect(self._refresh_related)
         form.addRow("Customer *", self.customer)
 
-        self.project = QComboBox()
-        self.site = QComboBox()
+        self.project = AdaptiveComboBox()
+        self.site = AdaptiveComboBox()
         form.addRow("Project *", self.project)
         form.addRow("Site *", self.site)
 
@@ -516,15 +525,43 @@ class DeploymentDialog(QDialog):
         time_layout.addWidget(self.end_time)
         form.addRow("Working time *", time_row)
 
-        self.work_type = QComboBox()
+        self.work_type = AdaptiveComboBox()
         self.work_type.addItems(
             ["Full day", "Half day – AM", "Half day – PM", "Overtime", "Travel", "Office"]
         )
         form.addRow("Work type", self.work_type)
 
-        self.status = QComboBox()
+        self.status = AdaptiveComboBox()
         self.status.addItems(["Scheduled", "Confirmed", "Completed", "Cancelled"])
         form.addRow("Status", self.status)
+
+        self.day_basis = QCheckBox("This is day-basis work")
+        self.day_basis.setToolTip(
+            "Enable this when the employee is paid a fixed amount for this work date."
+        )
+        form.addRow("Payment basis", self.day_basis)
+
+        self.payment_panel = QFrame()
+        self.payment_panel.setObjectName("PaymentPanel")
+        payment_layout = QHBoxLayout(self.payment_panel)
+        payment_layout.setContentsMargins(12, 8, 12, 8)
+        payment_layout.setSpacing(10)
+        self.day_rate = QDoubleSpinBox()
+        self.day_rate.setDecimals(2)
+        self.day_rate.setRange(0, 10_000_000)
+        self.day_rate.setSingleStep(100)
+        self.day_rate.setPrefix("₹ ")
+        self.day_rate.setGroupSeparatorShown(True)
+        self.day_rate.setMinimumWidth(180)
+        payment_layout.addWidget(self.day_rate)
+        per_day = _plain_label("per employee / day", muted=True)
+        payment_layout.addWidget(per_day)
+        payment_layout.addStretch()
+        self.payment_completed = QCheckBox("Payment completed")
+        payment_layout.addWidget(self.payment_completed)
+        form.addRow("Day rate *", self.payment_panel)
+        self.payment_label = form.labelForField(self.payment_panel)
+        self.day_basis.toggled.connect(self._sync_payment_controls)
 
         self.notes = QPlainTextEdit()
         self.notes.setPlaceholderText(
@@ -545,6 +582,7 @@ class DeploymentDialog(QDialog):
         self._refresh_related()
         if self.record:
             self._load_record()
+        self._sync_payment_controls(self.day_basis.isChecked())
 
         if (
             (self.employee_list is not None and self.employee_list.count() == 0)
@@ -604,7 +642,19 @@ class DeploymentDialog(QDialog):
         index = self.status.findText(self.record["status"])
         if index >= 0:
             self.status.setCurrentIndex(index)
+        self.day_rate.setValue(float(self.record.get("day_rate") or 0))
+        self.payment_completed.setChecked(
+            bool(self.record.get("payment_completed", 0))
+        )
+        self.day_basis.setChecked(bool(self.record.get("day_basis", 0)))
         self.notes.setPlainText(self.record.get("notes") or "")
+
+    def _sync_payment_controls(self, enabled: bool) -> None:
+        self.payment_panel.setVisible(enabled)
+        if self.payment_label is not None:
+            self.payment_label.setVisible(enabled)
+        if not enabled:
+            self.payment_completed.setChecked(False)
 
     def _employee_ids(self) -> list[int]:
         if self.employee_combo is not None:
@@ -628,6 +678,11 @@ class DeploymentDialog(QDialog):
             "end_time": self.end_time.time().toString("HH:mm"),
             "work_type": self.work_type.currentText(),
             "status": self.status.currentText(),
+            "day_basis": self.day_basis.isChecked(),
+            "day_rate": self.day_rate.value() if self.day_basis.isChecked() else 0,
+            "payment_completed": (
+                self.payment_completed.isChecked() if self.day_basis.isChecked() else False
+            ),
             "notes": self.notes.toPlainText().strip(),
         }
 
@@ -785,6 +840,18 @@ class DayEntriesDialog(QDialog):
             )
             timing.setObjectName("Muted")
             details.addWidget(timing)
+            if row.get("day_basis"):
+                completed = bool(row.get("payment_completed"))
+                payment = QLabel(
+                    f"Day basis  •  {format_currency(row.get('day_rate'))} per day  •  "
+                    + ("Payment completed" if completed else "Payment pending")
+                )
+                payment.setStyleSheet(
+                    "color: #14947E; font-weight: 700;"
+                    if completed
+                    else "color: #B7791F; font-weight: 700;"
+                )
+                details.addWidget(payment)
             if row.get("notes"):
                 note = QLabel(row["notes"])
                 note.setWordWrap(True)

@@ -56,6 +56,9 @@ def seed(database: Database) -> None:
             "end_time": "18:00",
             "work_type": "Full day",
             "status": "Confirmed",
+            "day_basis": True,
+            "day_rate": 1850,
+            "payment_completed": False,
             "notes": "UI smoke test",
         },
         [employee],
@@ -84,6 +87,10 @@ def test_main_window_and_deployment_dialog_render_offscreen(tmp_path):
         dialog = DeploymentDialog(database, initial_date=QDate.currentDate())
         assert dialog.employee_list is not None
         assert dialog.employee_list.count() == 1
+        dialog.day_basis.setChecked(True)
+        assert not dialog.payment_panel.isHidden()
+        dialog.day_rate.setValue(1500)
+        assert dialog._values()["day_rate"] == 1500
         dialog.close()
 
         window = MainWindow(database, tmp_path)
@@ -91,7 +98,33 @@ def test_main_window_and_deployment_dialog_render_offscreen(tmp_path):
         app.processEvents()
         preview = window.grab()
         assert not preview.isNull()
+        calendar_grid = window.calendar_page.calendar._calendar_grid
+        assert calendar_grid is not None
+        last_row = calendar_grid.model().rowCount() - 1
+        last_cell = calendar_grid.visualRect(calendar_grid.model().index(last_row, 0))
+        assert last_cell.bottom() <= calendar_grid.viewport().rect().bottom()
         assert window.calendar_page.calendar.events_for(QDate.currentDate())
+        assert window.reports_page.summary_rows[0]["total_amount"] == 1850
+        assert window.reports_page.summary_rows[0]["pending_amount"] == 1850
+
+        window.calendar_page.calendar.setCurrentPage(2026, 9)
+        window.calendar_page.refresh()
+        database.add_deployments(
+            {
+                "work_date": "2026-08-31",
+                "customer_id": database.list_master("customer")[0]["id"],
+                "project_id": database.list_master("project")[0]["id"],
+                "site_id": database.list_master("site")[0]["id"],
+                "start_time": "09:00",
+                "end_time": "18:00",
+                "work_type": "Full day",
+                "status": "Scheduled",
+                "notes": "Month boundary test",
+            },
+            [database.list_master("employee")[0]["id"]],
+        )
+        window.calendar_page.refresh()
+        assert window.calendar_page.calendar.events_for(QDate(2026, 8, 31))
         window.close()
         app.processEvents()
     finally:

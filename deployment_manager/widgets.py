@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Iterable
 
 from PySide6.QtCore import QDate, QRect, Qt, Signal
-from PySide6.QtGui import QColor, QFontMetrics, QPainter, QPen
+from PySide6.QtGui import QColor, QFontMetrics, QPainter, QPen, QWheelEvent
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCalendarWidget,
@@ -15,14 +15,63 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QLineEdit,
+    QListView,
     QPushButton,
     QSizePolicy,
+    QTableView,
     QTableWidget,
     QVBoxLayout,
     QWidget,
 )
 
 from .theme import COLORS
+
+
+def format_currency(value: Any) -> str:
+    amount = float(value or 0)
+    return f"₹{amount:,.2f}"
+
+
+class AdaptiveComboBox(QComboBox):
+    """A themed combo whose popup grows to show every item when space allows."""
+
+    def __init__(self, parent: QWidget | None = None):
+        super().__init__(parent)
+        view = QListView(self)
+        view.setObjectName("ComboPopup")
+        view.setSpacing(1)
+        view.setUniformItemSizes(True)
+        view.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        self.setView(view)
+        self.setMaxVisibleItems(1000)
+
+    def showPopup(self) -> None:
+        view = self.view()
+        row_height = max(
+            view.sizeHintForRow(0),
+            self.fontMetrics().height() + 20,
+            38,
+        )
+        row_count = max(1, self.count())
+        screen = self.screen()
+        available_height = screen.availableGeometry().height() if screen else 900
+        maximum_height = max(row_height, int(available_height * 0.58))
+        popup_height = min(row_count * row_height + 6, maximum_height)
+
+        scrollbar_width = view.verticalScrollBar().sizeHint().width()
+        content_width = view.sizeHintForColumn(0)
+        popup_width = max(self.width(), content_width + scrollbar_width + 36)
+        if screen:
+            popup_width = min(popup_width, int(screen.availableGeometry().width() * 0.75))
+
+        view.setMinimumHeight(popup_height)
+        view.setMaximumHeight(popup_height)
+        view.setMinimumWidth(popup_width)
+        super().showPopup()
+
+        popup = view.window()
+        popup.setMinimumWidth(popup_width)
+        popup.setMinimumHeight(popup_height)
 
 
 def make_button(
@@ -187,6 +236,16 @@ class MonthCalendar(QCalendarWidget):
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
         self.currentPageChanged.connect(self._emit_page_changed)
+        self._calendar_grid = self.findChild(
+            QTableView, "qt_calendar_calendarview"
+        )
+        if self._calendar_grid is not None:
+            self._calendar_grid.verticalHeader().setSectionResizeMode(
+                QHeaderView.ResizeMode.Fixed
+            )
+            self._calendar_grid.setVerticalScrollBarPolicy(
+                Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+            )
         self.setStyleSheet(
             """
             QCalendarWidget {
@@ -213,15 +272,52 @@ class MonthCalendar(QCalendarWidget):
             """
         )
 
+    def _fit_calendar_rows(self) -> None:
+        """Fit every week row into the viewport, including a possible header row."""
+        grid = self._calendar_grid
+        if grid is None or grid.model() is None:
+            return
+        row_count = grid.model().rowCount()
+        available = grid.viewport().height()
+        if row_count <= 0 or available <= 0:
+            return
+
+        # Qt versions expose either six date rows or a seventh model row for the
+        # weekday labels. Keep that optional label row compact and share the rest
+        # evenly between all six weeks so the final week can never be clipped.
+        header_rows = 1 if row_count == 7 else 0
+        header_height = min(42, max(28, available // 8)) if header_rows else 0
+        week_rows = row_count - header_rows
+        week_space = max(week_rows, available - header_height)
+        week_height, remainder = divmod(week_space, week_rows)
+
+        if header_rows:
+            grid.setRowHeight(0, header_height)
+        for offset, row in enumerate(range(header_rows, row_count)):
+            grid.setRowHeight(row, week_height + (1 if offset < remainder else 0))
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._fit_calendar_rows()
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        self._fit_calendar_rows()
+
     def _emit_page_changed(self, year: int, month: int) -> None:
         self.pageChanged.emit(year, month)
 
     def set_events(self, events: dict[str, list[dict[str, Any]]]) -> None:
         self._events = events
+        self._fit_calendar_rows()
         self.updateCells()
 
     def events_for(self, value: QDate) -> list[dict[str, Any]]:
         return self._events.get(value.toString("yyyy-MM-dd"), [])
+
+    def wheelEvent(self, event: QWheelEvent) -> None:
+        """Keep wheel movement from unexpectedly switching calendar months."""
+        event.accept()
 
     def paintCell(self, painter: QPainter, rect: QRect, value: QDate) -> None:
         painter.save()
@@ -232,8 +328,11 @@ class MonthCalendar(QCalendarWidget):
         )
         selected = value == self.selectedDate()
         today = value == QDate.currentDate()
+        events = self.events_for(value)
 
         background = QColor("#FFFFFF") if in_month else QColor("#F7F9FC")
+        if not in_month and events:
+            background = QColor("#F1F3FF")
         if selected:
             background = QColor(COLORS["primary_soft"])
         painter.fillRect(rect, background)
@@ -257,7 +356,9 @@ class MonthCalendar(QCalendarWidget):
                 str(value.day()),
             )
         else:
-            if not in_month:
+            if not in_month and events:
+                number_color = QColor(COLORS["primary"])
+            elif not in_month:
                 number_color = QColor("#AAB4C4")
             elif value.dayOfWeek() == Qt.DayOfWeek.Sunday:
                 number_color = QColor(COLORS["accent"])
@@ -270,7 +371,6 @@ class MonthCalendar(QCalendarWidget):
                 str(value.day()),
             )
 
-        events = self.events_for(value)
         available = max(1, (rect.height() - 37) // 21)
         visible_count = min(len(events), max(0, available - (1 if len(events) > available else 0)))
         chip_font = painter.font()

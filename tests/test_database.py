@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
+import sqlite3
 
 import pytest
 
@@ -189,6 +190,11 @@ def test_validation_and_backup(database: Database, tmp_path):
     with pytest.raises(ValueError, match="End time"):
         database.add_deployments(invalid_time, [ids["employee_one"]])
 
+    invalid_rate = deployment_values(ids, "2026-01-15")
+    invalid_rate.update({"day_basis": True, "day_rate": 0})
+    with pytest.raises(ValueError, match="greater than zero"):
+        database.add_deployments(invalid_rate, [ids["employee_one"]])
+
     database.add_deployments(
         deployment_values(ids, "2026-01-15"), [ids["employee_one"]]
     )
@@ -201,3 +207,99 @@ def test_validation_and_backup(database: Database, tmp_path):
         assert backup.list_deployments()[0]["project_name"] == "Plant Upgrade"
     finally:
         backup.close()
+
+
+def test_day_basis_payment_fields_and_filters(database: Database):
+    ids = seed_directory(database)
+
+    pending = deployment_values(ids, "2026-08-31")
+    pending.update(
+        {"day_basis": True, "day_rate": 1750.0, "payment_completed": False}
+    )
+    pending_id = database.add_deployments(pending, [ids["employee_one"]])[0]
+
+    completed = deployment_values(ids, "2026-09-01")
+    completed.update(
+        {"day_basis": True, "day_rate": 2200.0, "payment_completed": True}
+    )
+    database.add_deployments(completed, [ids["employee_two"]])
+
+    ordinary = deployment_values(ids, "2026-09-02")
+    database.add_deployments(ordinary, [ids["employee_one"]])
+
+    day_basis_rows = database.list_deployments(day_basis=True)
+    assert len(day_basis_rows) == 2
+    assert sum(row["day_rate"] for row in day_basis_rows) == 3950.0
+
+    pending_rows = database.list_deployments(
+        day_basis=True, payment_completed=False
+    )
+    assert [row["id"] for row in pending_rows] == [pending_id]
+    assert len(
+        database.list_deployments(day_basis=True, payment_completed=True)
+    ) == 1
+
+    update = database.get_deployment(pending_id)
+    assert update is not None
+    update["payment_completed"] = True
+    database.update_deployment(pending_id, update)
+    assert database.get_deployment(pending_id)["payment_completed"] == 1
+
+
+def test_calendar_grid_includes_adjacent_month_entries(database: Database):
+    ids = seed_directory(database)
+    database.add_deployments(
+        deployment_values(ids, "2026-08-31"), [ids["employee_one"]]
+    )
+
+    september_grid = database.month_events(2026, 9)
+    assert "2026-08-31" in september_grid
+    assert september_grid["2026-08-31"][0]["employee_name"] == "Asha Rao"
+
+
+def test_existing_version_one_database_migrates_without_data_loss(tmp_path):
+    path = tmp_path / "legacy.db"
+    connection = sqlite3.connect(path)
+    connection.executescript(
+        """
+        CREATE TABLE deployments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            work_date TEXT NOT NULL,
+            employee_id INTEGER NOT NULL,
+            customer_id INTEGER NOT NULL,
+            project_id INTEGER NOT NULL,
+            site_id INTEGER NOT NULL,
+            start_time TEXT NOT NULL DEFAULT '09:00',
+            end_time TEXT NOT NULL DEFAULT '18:00',
+            work_type TEXT NOT NULL DEFAULT 'Full day',
+            status TEXT NOT NULL DEFAULT 'Scheduled',
+            notes TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        INSERT INTO deployments (
+            work_date, employee_id, customer_id, project_id, site_id,
+            start_time, end_time, work_type, status, notes, created_at, updated_at
+        ) VALUES (
+            '2026-08-31', 1, 1, 1, 1, '09:00', '18:00', 'Full day',
+            'Scheduled', 'Legacy record preserved', '2026-08-01', '2026-08-01'
+        );
+        PRAGMA user_version = 1;
+        """
+    )
+    connection.close()
+
+    migrated = Database(path)
+    try:
+        columns = {
+            row["name"]
+            for row in migrated.connection.execute("PRAGMA table_info(deployments)")
+        }
+        assert {"day_basis", "day_rate", "payment_completed"}.issubset(columns)
+        assert migrated.connection.execute("PRAGMA user_version").fetchone()[0] == 2
+        row = migrated.connection.execute(
+            "SELECT notes, day_basis, day_rate, payment_completed FROM deployments"
+        ).fetchone()
+        assert tuple(row) == ("Legacy record preserved", 0, 0.0, 0)
+    finally:
+        migrated.close()

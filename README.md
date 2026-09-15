@@ -10,10 +10,14 @@ Deployment Desk is a modern, offline employee deployment manager built with Pyth
 - Opens a new deployment form when you click an empty date.
 - Opens that day's assignments when you click a date that already has entries.
 - Assigns one or many employees to a customer, project and site in one step.
+- Records optional day-basis work, an amount per employee per day, and whether
+  that payment is completed or pending.
 - Warns when an employee already has another deployment on the selected date.
 - Maintains employee, customer, project and site directories.
 - Provides searchable, filterable history with edit and delete actions.
-- Generates employee-wise, month-wise, project-wise and customer-wise reports.
+- Generates employee-wise, month-wise, date-wise, project-wise and customer-wise
+  deployment and payment reports for any custom date range.
+- Filters history and reports by pending or completed payment status.
 - Exports formatted summary and detailed worksheets to Excel.
 - Stores data locally in SQLite and includes a one-click database backup.
 - Uses a polished SoftMaterial interface and a transparent rounded-square icon.
@@ -54,8 +58,9 @@ The executable is self-contained; Python is not required on the destination PC.
 
 - **Create deployment:** use the coral button in the left sidebar, or press `Ctrl+N`.
 - **Calendar:** click an empty date to add work; click a populated date to review, edit, delete or add more.
-- **History:** filter by date, employee, customer, project, site or status.
-- **Reports:** choose a grouping and date range, generate the report, then export it to `.xlsx`.
+- **History:** filter by date, employee, customer, project, site, status or payment.
+- **Reports:** choose a grouping and any date range, review total/completed/pending
+  day-basis amounts, then export the full report to `.xlsx`.
 - **Directory:** deactivate old employees, customers, projects or sites without losing historical records.
 - **Backup:** use **Back up database** in the sidebar. The exact live database path is shown in the status bar.
 

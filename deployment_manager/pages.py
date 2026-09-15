@@ -8,7 +8,6 @@ from typing import Any
 from PySide6.QtCore import QDate, Qt, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
-    QComboBox,
     QFileDialog,
     QFrame,
     QHBoxLayout,
@@ -24,11 +23,13 @@ from .database import Database
 from .dialogs import DayEntriesDialog, DeploymentDialog
 from .theme import COLORS
 from .widgets import (
+    AdaptiveComboBox,
     MetricCard,
     MonthCalendar,
     PageHeading,
     SearchBox,
     fill_combo,
+    format_currency,
     make_button,
     make_date_edit,
     make_table,
@@ -44,6 +45,9 @@ DETAIL_COLUMNS = [
     "Work type",
     "Time",
     "Status",
+    "Day basis",
+    "Amount / day",
+    "Payment",
     "Notes",
 ]
 
@@ -56,6 +60,23 @@ def _month_bounds(day: QDate | None = None) -> tuple[QDate, QDate]:
 
 def _iso(value: QDate) -> str:
     return value.toString("yyyy-MM-dd")
+
+
+def _payment_filter_values(mode: str | None) -> tuple[bool | None, bool | None]:
+    if mode == "day_basis":
+        return True, None
+    if mode == "pending":
+        return True, False
+    if mode == "completed":
+        return True, True
+    return None, None
+
+
+def _add_payment_filters(combo: AdaptiveComboBox) -> None:
+    combo.addItem("All deployments", "all")
+    combo.addItem("Day-basis only", "day_basis")
+    combo.addItem("Payment pending", "pending")
+    combo.addItem("Payment completed", "completed")
 
 
 def _populate_detail_table(table, rows: list[dict[str, Any]]) -> None:
@@ -81,6 +102,13 @@ def _populate_detail_table(table, rows: list[dict[str, Any]]) -> None:
             row["work_type"],
             f"{row['start_time']}–{row['end_time']}",
             row["status"],
+            "Yes" if row.get("day_basis") else "No",
+            format_currency(row.get("day_rate")) if row.get("day_basis") else "—",
+            (
+                "Completed" if row.get("payment_completed") else "Pending"
+            )
+            if row.get("day_basis")
+            else "—",
             row.get("notes") or "",
         ]
         for column, value in enumerate(values):
@@ -90,6 +118,18 @@ def _populate_detail_table(table, rows: list[dict[str, Any]]) -> None:
             if column == 7:
                 item.setForeground(
                     status_colors.get(row["status"], QColor(COLORS["text"]))
+                )
+                font = item.font()
+                font.setBold(True)
+                item.setFont(font)
+            if column == 9:
+                item.setTextAlignment(
+                    Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+                )
+            if column == 10 and row.get("day_basis"):
+                completed = bool(row.get("payment_completed"))
+                item.setForeground(
+                    QColor(COLORS["success"] if completed else COLORS["amber"])
                 )
                 font = item.font()
                 font.setBold(True)
@@ -148,7 +188,7 @@ class CalendarPage(QWidget):
         tool_layout.addWidget(self.month_label)
         tool_layout.addStretch()
 
-        directory = make_button("Employees & directory")
+        directory = make_button("Employees && directory")
         directory.clicked.connect(self.requestDirectory.emit)
         tool_layout.addWidget(directory)
         layout.addWidget(toolbar)
@@ -231,9 +271,9 @@ class HistoryPage(QWidget):
         row_one = QHBoxLayout()
         self.date_from = make_date_edit(first)
         self.date_to = make_date_edit(last)
-        self.employee = QComboBox()
-        self.customer = QComboBox()
-        self.status = QComboBox()
+        self.employee = AdaptiveComboBox()
+        self.customer = AdaptiveComboBox()
+        self.status = AdaptiveComboBox()
         self.status.addItem("All statuses", None)
         for value in ("Scheduled", "Confirmed", "Completed", "Cancelled"):
             self.status.addItem(value, value)
@@ -247,8 +287,10 @@ class HistoryPage(QWidget):
         filter_layout.addLayout(row_one)
 
         row_two = QHBoxLayout()
-        self.project = QComboBox()
-        self.site = QComboBox()
+        self.project = AdaptiveComboBox()
+        self.site = AdaptiveComboBox()
+        self.payment_filter = AdaptiveComboBox()
+        _add_payment_filters(self.payment_filter)
         self.search = SearchBox("Search employee, company, project, site or notes")
         apply_button = make_button("Apply filters", role="Primary")
         clear_button = make_button("Reset")
@@ -257,6 +299,7 @@ class HistoryPage(QWidget):
         self.search.returnPressed.connect(self.refresh)
         row_two.addWidget(self.project, 1)
         row_two.addWidget(self.site, 1)
+        row_two.addWidget(self.payment_filter, 1)
         row_two.addWidget(self.search, 2)
         row_two.addWidget(clear_button)
         row_two.addWidget(apply_button)
@@ -288,6 +331,7 @@ class HistoryPage(QWidget):
             self.project,
             self.site,
             self.status,
+            self.payment_filter,
         ):
             if hasattr(widget, "dateChanged"):
                 widget.dateChanged.connect(lambda *_: self.refresh())
@@ -326,12 +370,22 @@ class HistoryPage(QWidget):
         first, last = _month_bounds()
         self.date_from.setDate(first)
         self.date_to.setDate(last)
-        for combo in (self.employee, self.customer, self.project, self.site, self.status):
+        for combo in (
+            self.employee,
+            self.customer,
+            self.project,
+            self.site,
+            self.status,
+            self.payment_filter,
+        ):
             combo.setCurrentIndex(0)
         self.search.clear()
         self.refresh()
 
     def _query(self) -> list[dict[str, Any]]:
+        day_basis, payment_completed = _payment_filter_values(
+            self.payment_filter.currentData()
+        )
         return self.database.list_deployments(
             date_from=_iso(self.date_from.date()),
             date_to=_iso(self.date_to.date()),
@@ -340,6 +394,8 @@ class HistoryPage(QWidget):
             project_id=self.project.currentData(),
             site_id=self.site.currentData(),
             status=self.status.currentData(),
+            day_basis=day_basis,
+            payment_completed=payment_completed,
             search=self.search.text(),
         )
 
@@ -348,8 +404,20 @@ class HistoryPage(QWidget):
             return
         self.rows = self._query()
         _populate_detail_table(self.table, self.rows)
+        total_amount = sum(
+            float(row.get("day_rate") or 0)
+            for row in self.rows
+            if row.get("day_basis")
+        )
+        pending_amount = sum(
+            float(row.get("day_rate") or 0)
+            for row in self.rows
+            if row.get("day_basis") and not row.get("payment_completed")
+        )
         self.count_label.setText(
             f"{len(self.rows)} deployment record{'s' if len(self.rows) != 1 else ''}"
+            f"  •  Day-basis total {format_currency(total_amount)}"
+            f"  •  Pending {format_currency(pending_amount)}"
         )
 
     def selected_id(self) -> int | None:
@@ -403,7 +471,7 @@ class ReportsPage(QWidget):
         layout.addWidget(
             PageHeading(
                 "Deployment reports",
-                "Generate employee-, month-, project- or customer-wise summaries at any time.",
+                "Review day-basis payments by employee, month, date, project or customer.",
             )
         )
 
@@ -415,15 +483,16 @@ class ReportsPage(QWidget):
 
         current = QDate.currentDate()
         row_one = QHBoxLayout()
-        self.group_by = QComboBox()
+        self.group_by = AdaptiveComboBox()
         self.group_by.addItem("Employee-wise", "employee")
         self.group_by.addItem("Month-wise", "month")
+        self.group_by.addItem("Date-wise", "date")
         self.group_by.addItem("Project-wise", "project")
         self.group_by.addItem("Customer-wise", "customer")
         self.date_from = make_date_edit(QDate(current.year(), 1, 1))
         self.date_to = make_date_edit(current)
-        self.employee = QComboBox()
-        self.customer = QComboBox()
+        self.employee = AdaptiveComboBox()
+        self.customer = AdaptiveComboBox()
         row_one.addWidget(QLabel("Report"))
         row_one.addWidget(self.group_by)
         row_one.addWidget(QLabel("From"))
@@ -435,12 +504,14 @@ class ReportsPage(QWidget):
         filter_layout.addLayout(row_one)
 
         row_two = QHBoxLayout()
-        self.project = QComboBox()
-        self.site = QComboBox()
-        self.status = QComboBox()
+        self.project = AdaptiveComboBox()
+        self.site = AdaptiveComboBox()
+        self.status = AdaptiveComboBox()
         self.status.addItem("All statuses", None)
         for value in ("Scheduled", "Confirmed", "Completed", "Cancelled"):
             self.status.addItem(value, value)
+        self.payment_filter = AdaptiveComboBox()
+        _add_payment_filters(self.payment_filter)
         generate = make_button("Generate report", role="Primary")
         export = make_button("Export Excel")
         generate.clicked.connect(self.generate)
@@ -448,6 +519,7 @@ class ReportsPage(QWidget):
         row_two.addWidget(self.project, 1)
         row_two.addWidget(self.site, 1)
         row_two.addWidget(self.status, 1)
+        row_two.addWidget(self.payment_filter, 1)
         row_two.addStretch()
         row_two.addWidget(export)
         row_two.addWidget(generate)
@@ -456,21 +528,29 @@ class ReportsPage(QWidget):
 
         metrics = QHBoxLayout()
         self.total_metric = MetricCard("Deployments", accent=COLORS["primary"])
-        self.days_metric = MetricCard("Working dates", accent=COLORS["teal"])
-        self.people_metric = MetricCard("Employees", accent=COLORS["accent"])
-        self.customer_metric = MetricCard("Customers", accent=COLORS["amber"])
+        self.payment_metric = MetricCard("Day-basis total", accent=COLORS["teal"])
+        self.completed_metric = MetricCard("Payment completed", accent=COLORS["success"])
+        self.pending_metric = MetricCard("Payment pending", accent=COLORS["amber"])
         for card in (
             self.total_metric,
-            self.days_metric,
-            self.people_metric,
-            self.customer_metric,
+            self.payment_metric,
+            self.completed_metric,
+            self.pending_metric,
         ):
             metrics.addWidget(card, 1)
         layout.addLayout(metrics)
 
         tabs = QTabWidget()
         self.summary_table = make_table(
-            ["Group", "Deployments", "Unique dates", "Employees", "Customers", "Projects"]
+            [
+                "Group",
+                "Deployments",
+                "Work dates",
+                "Employees",
+                "Total amount",
+                "Completed",
+                "Pending",
+            ]
         )
         self.details_table = make_table(DETAIL_COLUMNS)
         tabs.addTab(self.summary_table, "Summary")
@@ -507,6 +587,9 @@ class ReportsPage(QWidget):
         )
 
     def _query(self) -> list[dict[str, Any]]:
+        day_basis, payment_completed = _payment_filter_values(
+            self.payment_filter.currentData()
+        )
         return self.database.list_deployments(
             date_from=_iso(self.date_from.date()),
             date_to=_iso(self.date_to.date()),
@@ -515,6 +598,8 @@ class ReportsPage(QWidget):
             project_id=self.project.currentData(),
             site_id=self.site.currentData(),
             status=self.status.currentData(),
+            day_basis=day_basis,
+            payment_completed=payment_completed,
         )
 
     def _group_label(self, row: dict[str, Any], mode: str) -> str:
@@ -525,6 +610,10 @@ class ReportsPage(QWidget):
             return code + row["project_name"]
         if mode == "customer":
             return row["customer_name"]
+        if mode == "date":
+            return QDate.fromString(row["work_date"], "yyyy-MM-dd").toString(
+                "dd MMM yyyy"
+            )
         value = datetime.strptime(row["work_date"][:7], "%Y-%m")
         return value.strftime("%B %Y")
 
@@ -540,15 +629,21 @@ class ReportsPage(QWidget):
                     "deployments": 0,
                     "dates": set(),
                     "employees": set(),
-                    "customers": set(),
-                    "projects": set(),
+                    "total_amount": 0.0,
+                    "completed_amount": 0.0,
+                    "pending_amount": 0.0,
                 },
             )
             bucket["deployments"] += 1
             bucket["dates"].add(row["work_date"])
             bucket["employees"].add(row["employee_id"])
-            bucket["customers"].add(row["customer_id"])
-            bucket["projects"].add(row["project_id"])
+            if row.get("day_basis"):
+                amount = float(row.get("day_rate") or 0)
+                bucket["total_amount"] += amount
+                if row.get("payment_completed"):
+                    bucket["completed_amount"] += amount
+                else:
+                    bucket["pending_amount"] += amount
 
         result: list[dict[str, Any]] = []
         for bucket in groups.values():
@@ -558,11 +653,12 @@ class ReportsPage(QWidget):
                     "deployments": bucket["deployments"],
                     "dates": len(bucket["dates"]),
                     "employees": len(bucket["employees"]),
-                    "customers": len(bucket["customers"]),
-                    "projects": len(bucket["projects"]),
+                    "total_amount": round(bucket["total_amount"], 2),
+                    "completed_amount": round(bucket["completed_amount"], 2),
+                    "pending_amount": round(bucket["pending_amount"], 2),
                 }
             )
-        if mode != "month":
+        if mode not in {"month", "date"}:
             result.sort(key=lambda item: item["group"].casefold())
         return result
 
@@ -576,20 +672,48 @@ class ReportsPage(QWidget):
         self.summary_rows = self._summarize(self.rows)
 
         self.summary_table.setRowCount(len(self.summary_rows))
-        keys = ("group", "deployments", "dates", "employees", "customers", "projects")
+        keys = (
+            "group",
+            "deployments",
+            "dates",
+            "employees",
+            "total_amount",
+            "completed_amount",
+            "pending_amount",
+        )
         for row_index, row in enumerate(self.summary_rows):
             for column, key in enumerate(keys):
-                item = QTableWidgetItem(str(row[key]))
-                if column > 0:
+                value = format_currency(row[key]) if column >= 4 else str(row[key])
+                item = QTableWidgetItem(value)
+                if 0 < column < 4:
                     item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                elif column >= 4:
+                    item.setTextAlignment(
+                        Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+                    )
+                if column == 5:
+                    item.setForeground(QColor(COLORS["success"]))
+                elif column == 6:
+                    item.setForeground(QColor(COLORS["amber"]))
                 self.summary_table.setItem(row_index, column, item)
         self.summary_table.resizeRowsToContents()
         _populate_detail_table(self.details_table, self.rows)
 
         self.total_metric.set_value(len(self.rows))
-        self.days_metric.set_value(len({row["work_date"] for row in self.rows}))
-        self.people_metric.set_value(len({row["employee_id"] for row in self.rows}))
-        self.customer_metric.set_value(len({row["customer_id"] for row in self.rows}))
+        total_amount = sum(
+            float(row.get("day_rate") or 0)
+            for row in self.rows
+            if row.get("day_basis")
+        )
+        completed_amount = sum(
+            float(row.get("day_rate") or 0)
+            for row in self.rows
+            if row.get("day_basis") and row.get("payment_completed")
+        )
+        pending_amount = total_amount - completed_amount
+        self.payment_metric.set_value(format_currency(total_amount))
+        self.completed_metric.set_value(format_currency(completed_amount))
+        self.pending_metric.set_value(format_currency(pending_amount))
 
     def _filter_description(self) -> list[tuple[str, str]]:
         return [
@@ -604,6 +728,7 @@ class ReportsPage(QWidget):
             ("Project", self.project.currentText()),
             ("Site", self.site.currentText()),
             ("Status", self.status.currentText()),
+            ("Payment", self.payment_filter.currentText()),
         ]
 
     def export_excel(self) -> None:
@@ -640,8 +765,8 @@ class ReportsPage(QWidget):
         summary = workbook.active
         summary.title = "Summary"
         summary.sheet_view.showGridLines = False
-        summary.merge_cells("A1:F1")
-        summary["A1"] = "Deployment Desk — Deployment Report"
+        summary.merge_cells("A1:G1")
+        summary["A1"] = "Deployment Desk — Deployment & Payment Report"
         summary["A1"].font = Font(size=18, bold=True, color="172033")
         summary["A1"].alignment = Alignment(vertical="center")
         summary.row_dimensions[1].height = 34
@@ -653,7 +778,15 @@ class ReportsPage(QWidget):
             row_cursor += 1
         row_cursor += 1
 
-        headers = ["Group", "Deployments", "Unique dates", "Employees", "Customers", "Projects"]
+        headers = [
+            "Group",
+            "Deployments",
+            "Work dates",
+            "Employees",
+            "Total amount",
+            "Payment completed",
+            "Payment pending",
+        ]
         header_fill = PatternFill("solid", fgColor="526DFE")
         header_font = Font(bold=True, color="FFFFFF")
         thin = Side(style="thin", color="E3E9F2")
@@ -669,18 +802,50 @@ class ReportsPage(QWidget):
                 record["deployments"],
                 record["dates"],
                 record["employees"],
-                record["customers"],
-                record["projects"],
+                record["total_amount"],
+                record["completed_amount"],
+                record["pending_amount"],
             ]
             for column, value in enumerate(values, 1):
                 cell = summary.cell(row_cursor + 1, column, value)
                 cell.border = Border(bottom=thin)
                 if column > 1:
                     cell.alignment = Alignment(horizontal="center")
+                if column >= 5:
+                    cell.number_format = '₹#,##0.00'
             row_cursor += 1
+        totals = [
+            "GRAND TOTAL",
+            len(self.rows),
+            len({row["work_date"] for row in self.rows}),
+            len({row["employee_id"] for row in self.rows}),
+            sum(
+                float(row.get("day_rate") or 0)
+                for row in self.rows
+                if row.get("day_basis")
+            ),
+            sum(
+                float(row.get("day_rate") or 0)
+                for row in self.rows
+                if row.get("day_basis") and row.get("payment_completed")
+            ),
+            sum(
+                float(row.get("day_rate") or 0)
+                for row in self.rows
+                if row.get("day_basis") and not row.get("payment_completed")
+            ),
+        ]
+        row_cursor += 1
+        for column, value in enumerate(totals, 1):
+            cell = summary.cell(row_cursor, column, value)
+            cell.font = Font(bold=True, color="172033")
+            cell.fill = PatternFill("solid", fgColor="EEF1FF")
+            cell.border = Border(top=thin, bottom=thin)
+            if column >= 5:
+                cell.number_format = '₹#,##0.00'
         summary.freeze_panes = f"A{data_start}"
-        summary.auto_filter.ref = f"A{data_start - 1}:F{row_cursor}"
-        for index, width in enumerate((34, 15, 15, 13, 13, 13), 1):
+        summary.auto_filter.ref = f"A{data_start - 1}:G{row_cursor - 1}"
+        for index, width in enumerate((34, 15, 15, 13, 18, 20, 18), 1):
             summary.column_dimensions[get_column_letter(index)].width = width
 
         detail = workbook.create_sheet("Deployments")
@@ -699,6 +864,9 @@ class ReportsPage(QWidget):
             "End",
             "Work type",
             "Status",
+            "Day basis",
+            "Amount per employee / day",
+            "Payment status",
             "Notes",
         ]
         for column, header in enumerate(detail_headers, 1):
@@ -721,15 +889,42 @@ class ReportsPage(QWidget):
                 record["end_time"],
                 record["work_type"],
                 record["status"],
+                "Yes" if record.get("day_basis") else "No",
+                float(record.get("day_rate") or 0) if record.get("day_basis") else 0,
+                (
+                    "Completed" if record.get("payment_completed") else "Pending"
+                )
+                if record.get("day_basis")
+                else "Not applicable",
                 record.get("notes") or "",
             ]
             for column, value in enumerate(values, 1):
                 cell = detail.cell(row_index, column, value)
                 cell.border = Border(bottom=thin)
-                cell.alignment = Alignment(vertical="top", wrap_text=column == 14)
+                cell.alignment = Alignment(vertical="top", wrap_text=column == 17)
+                if column == 15:
+                    cell.number_format = '₹#,##0.00'
         detail.freeze_panes = "A2"
         detail.auto_filter.ref = detail.dimensions
-        widths = (13, 15, 23, 22, 25, 15, 28, 25, 18, 10, 10, 16, 14, 42)
+        widths = (
+            13,
+            15,
+            23,
+            22,
+            25,
+            15,
+            28,
+            25,
+            18,
+            10,
+            10,
+            16,
+            14,
+            12,
+            25,
+            18,
+            42,
+        )
         for index, width in enumerate(widths, 1):
             detail.column_dimensions[get_column_letter(index)].width = width
 

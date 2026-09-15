@@ -104,6 +104,10 @@ class Database:
                 end_time TEXT NOT NULL DEFAULT '18:00',
                 work_type TEXT NOT NULL DEFAULT 'Full day',
                 status TEXT NOT NULL DEFAULT 'Scheduled',
+                day_basis INTEGER NOT NULL DEFAULT 0 CHECK(day_basis IN (0, 1)),
+                day_rate REAL NOT NULL DEFAULT 0 CHECK(day_rate >= 0),
+                payment_completed INTEGER NOT NULL DEFAULT 0
+                    CHECK(payment_completed IN (0, 1)),
                 notes TEXT NOT NULL DEFAULT '',
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
@@ -125,10 +129,36 @@ class Database:
             CREATE UNIQUE INDEX IF NOT EXISTS uq_deployment_exact
                 ON deployments(work_date, employee_id, project_id, site_id, start_time);
 
-            PRAGMA user_version = 1;
+            PRAGMA user_version = 2;
             """
         )
+        self._migrate_schema()
         self.connection.commit()
+
+    def _migrate_schema(self) -> None:
+        """Add payment fields to databases created by Deployment Desk 1.0."""
+        columns = {
+            row["name"]
+            for row in self.connection.execute("PRAGMA table_info(deployments)")
+        }
+        migrations = {
+            "day_basis": (
+                "ALTER TABLE deployments ADD COLUMN day_basis INTEGER NOT NULL "
+                "DEFAULT 0 CHECK(day_basis IN (0, 1))"
+            ),
+            "day_rate": (
+                "ALTER TABLE deployments ADD COLUMN day_rate REAL NOT NULL "
+                "DEFAULT 0 CHECK(day_rate >= 0)"
+            ),
+            "payment_completed": (
+                "ALTER TABLE deployments ADD COLUMN payment_completed INTEGER NOT NULL "
+                "DEFAULT 0 CHECK(payment_completed IN (0, 1))"
+            ),
+        }
+        for column, statement in migrations.items():
+            if column not in columns:
+                self.connection.execute(statement)
+        self.connection.execute("PRAGMA user_version = 2")
 
     @staticmethod
     def _dicts(rows: Iterable[sqlite3.Row]) -> list[dict[str, Any]]:
@@ -281,6 +311,16 @@ class Database:
         if len(start) != 5 or len(end) != 5 or start >= end:
             raise ValueError("End time must be later than start time.")
 
+        if values.get("day_basis"):
+            try:
+                day_rate = float(values.get("day_rate", 0))
+            except (TypeError, ValueError) as exc:
+                raise ValueError("Enter a valid amount per employee per day.") from exc
+            if day_rate <= 0:
+                raise ValueError(
+                    "Amount per employee per day must be greater than zero."
+                )
+
     def find_conflicts(
         self,
         work_date: str,
@@ -327,6 +367,11 @@ class Database:
         self._validate_relationships(
             int(values["customer_id"]), int(values["project_id"]), int(values["site_id"])
         )
+        day_basis = int(bool(values.get("day_basis", False)))
+        day_rate = float(values.get("day_rate", 0) or 0) if day_basis else 0.0
+        payment_completed = (
+            int(bool(values.get("payment_completed", False))) if day_basis else 0
+        )
         now = utc_now()
         created: list[int] = []
         try:
@@ -336,9 +381,10 @@ class Database:
                         """
                         INSERT INTO deployments (
                             work_date, employee_id, customer_id, project_id, site_id,
-                            start_time, end_time, work_type, status, notes,
+                            start_time, end_time, work_type, status,
+                            day_basis, day_rate, payment_completed, notes,
                             created_at, updated_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
                             values["work_date"],
@@ -350,6 +396,9 @@ class Database:
                             values.get("end_time", "18:00"),
                             values.get("work_type", "Full day"),
                             values.get("status", "Scheduled"),
+                            day_basis,
+                            day_rate,
+                            payment_completed,
                             values.get("notes", "").strip(),
                             now,
                             now,
@@ -368,6 +417,11 @@ class Database:
         self._validate_relationships(
             int(values["customer_id"]), int(values["project_id"]), int(values["site_id"])
         )
+        day_basis = int(bool(values.get("day_basis", False)))
+        day_rate = float(values.get("day_rate", 0) or 0) if day_basis else 0.0
+        payment_completed = (
+            int(bool(values.get("payment_completed", False))) if day_basis else 0
+        )
         try:
             with self.connection:
                 cursor = self.connection.execute(
@@ -375,7 +429,8 @@ class Database:
                     UPDATE deployments
                     SET work_date = ?, employee_id = ?, customer_id = ?,
                         project_id = ?, site_id = ?, start_time = ?, end_time = ?,
-                        work_type = ?, status = ?, notes = ?, updated_at = ?
+                        work_type = ?, status = ?, day_basis = ?, day_rate = ?,
+                        payment_completed = ?, notes = ?, updated_at = ?
                     WHERE id = ?
                     """,
                     (
@@ -388,6 +443,9 @@ class Database:
                         values.get("end_time", "18:00"),
                         values.get("work_type", "Full day"),
                         values.get("status", "Scheduled"),
+                        day_basis,
+                        day_rate,
+                        payment_completed,
                         values.get("notes", "").strip(),
                         utc_now(),
                         deployment_id,
@@ -416,6 +474,8 @@ class Database:
         project_id: int | None = None,
         site_id: int | None = None,
         status: str | None = None,
+        day_basis: bool | None = None,
+        payment_completed: bool | None = None,
         search: str = "",
         deployment_id: int | None = None,
     ) -> list[dict[str, Any]]:
@@ -430,6 +490,11 @@ class Database:
             ("d.project_id = ?", project_id),
             ("d.site_id = ?", site_id),
             ("d.status = ?", status),
+            ("d.day_basis = ?", None if day_basis is None else int(day_basis)),
+            (
+                "d.payment_completed = ?",
+                None if payment_completed is None else int(payment_completed),
+            ),
             ("d.id = ?", deployment_id),
         )
         for clause, value in filters:
@@ -471,14 +536,13 @@ class Database:
         return self._dicts(rows)
 
     def month_events(self, year: int, month: int) -> dict[str, list[dict[str, Any]]]:
+        """Return the full six-week grid, including adjacent-month dates."""
         first = date(year, month, 1)
-        if month == 12:
-            next_month = date(year + 1, 1, 1)
-        else:
-            next_month = date(year, month + 1, 1)
+        grid_start = first - timedelta(days=first.weekday())
+        grid_end = grid_start + timedelta(days=41)
         rows = self.list_deployments(
-            date_from=first.isoformat(),
-            date_to=(next_month - timedelta(days=1)).isoformat(),
+            date_from=grid_start.isoformat(),
+            date_to=grid_end.isoformat(),
         )
         grouped: dict[str, list[dict[str, Any]]] = {}
         for row in rows:
@@ -535,3 +599,6 @@ class Database:
         self.connection.row_factory = sqlite3.Row
         self.connection.execute("PRAGMA foreign_keys = ON")
         self.connection.execute("PRAGMA journal_mode = WAL")
+        self.connection.execute("PRAGMA synchronous = NORMAL")
+        self.connection.execute("PRAGMA busy_timeout = 15000")
+        self._create_schema()
