@@ -32,16 +32,16 @@ QWidget {
     outline: none;
 }
 QFrame#Sidebar {
-    background: #B95762;
+    background: #F5CDD1;
     border: none;
 }
 QLabel#BrandTitle {
-    color: white;
+    color: #5D252C;
     font-size: 16pt;
     font-weight: 700;
 }
 QLabel#BrandSub, QLabel#SidebarMuted {
-    color: #FADDE0;
+    color: #875159;
 }
 QLabel#PageTitle {
     color: #172033;
@@ -98,13 +98,13 @@ QPushButton#Primary:hover {
     background: #C75F69;
 }
 QPushButton#Accent {
-    background: #FADDE0;
-    color: #8E3540;
-    border-color: #FADDE0;
+    background: #FFF8F9;
+    color: #743039;
+    border-color: #FFF8F9;
 }
 QPushButton#Accent:hover {
-    background: #FFF1F2;
-    border-color: #FFF1F2;
+    background: #FCEAEC;
+    border-color: #FCEAEC;
 }
 QPushButton#Danger {
     color: #C83E50;
@@ -117,16 +117,16 @@ QPushButton#NavButton {
     min-height: 45px;
     border: none;
     background: transparent;
-    color: #FFF2F3;
+    color: #6F3038;
     border-radius: 11px;
 }
 QPushButton#NavButton:hover {
-    color: white;
-    background: #AA4D57;
+    color: #5D252C;
+    background: #EDB4B9;
 }
 QPushButton#NavButton:checked {
     color: white;
-    background: #913B46;
+    background: #D86F78;
 }
 QLineEdit, QTextEdit, QPlainTextEdit, QComboBox, QDateEdit, QTimeEdit,
 QDoubleSpinBox {
