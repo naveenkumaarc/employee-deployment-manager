@@ -6,7 +6,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QDate
 from PySide6.QtGui import QImage
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QAbstractSpinBox
 
 from deployment_manager.database import Database
 from deployment_manager.dialogs import DeploymentDialog
@@ -74,6 +74,8 @@ def test_icon_assets_have_transparent_rounded_corners(tmp_path):
     assert image.width() == 512
     assert image.pixelColor(0, 0).alpha() == 0
     assert image.pixelColor(256, 256).alpha() == 255
+    rose_pixel = image.pixelColor(256, 64)
+    assert rose_pixel.red() > rose_pixel.blue()
     assert ico_path.exists()
     assert ico_path.stat().st_size > 1000
     app.processEvents()
@@ -91,6 +93,18 @@ def test_main_window_and_deployment_dialog_render_offscreen(tmp_path):
         assert not dialog.payment_panel.isHidden()
         dialog.day_rate.setValue(1500)
         assert dialog._values()["day_rate"] == 1500
+        assert (
+            dialog.start_time.buttonSymbols()
+            == QAbstractSpinBox.ButtonSymbols.NoButtons
+        )
+        assert (
+            dialog.end_time.buttonSymbols()
+            == QAbstractSpinBox.ButtonSymbols.NoButtons
+        )
+        assert (
+            dialog.day_rate.buttonSymbols()
+            == QAbstractSpinBox.ButtonSymbols.NoButtons
+        )
         dialog.close()
 
         window = MainWindow(database, tmp_path)
@@ -98,6 +112,7 @@ def test_main_window_and_deployment_dialog_render_offscreen(tmp_path):
         app.processEvents()
         preview = window.grab()
         assert not preview.isNull()
+        assert window.windowTitle() == "Deployment Desk"
         calendar_grid = window.calendar_page.calendar._calendar_grid
         assert calendar_grid is not None
         last_row = calendar_grid.model().rowCount() - 1
@@ -126,6 +141,37 @@ def test_main_window_and_deployment_dialog_render_offscreen(tmp_path):
         window.calendar_page.refresh()
         assert window.calendar_page.calendar.events_for(QDate(2026, 8, 31))
         window.close()
+        app.processEvents()
+    finally:
+        database.close()
+
+
+def test_copy_dialog_uses_next_date_and_resets_completion(tmp_path):
+    app = QApplication.instance() or QApplication([])
+    database = Database(tmp_path / "copy.db")
+    try:
+        seed(database)
+        source = database.list_deployments()[0]
+        source["status"] = "Completed"
+        source["payment_completed"] = True
+        database.update_deployment(source["id"], source)
+
+        dialog = DeploymentDialog(database, copy_from_id=source["id"])
+        values = dialog._values()
+        assert dialog.is_copy is True
+        assert dialog.deployment_id is None
+        assert dialog.employee_combo is not None
+        assert dialog.employee_combo.currentData() == source["employee_id"]
+        assert values["work_date"] == QDate.currentDate().addDays(1).toString(
+            "yyyy-MM-dd"
+        )
+        assert values["status"] == "Scheduled"
+        assert values["payment_completed"] is False
+
+        created = database.add_deployments(values, dialog._employee_ids())
+        assert len(created) == 1
+        assert len(database.list_deployments()) == 2
+        dialog.close()
         app.processEvents()
     finally:
         database.close()

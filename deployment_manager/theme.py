@@ -3,10 +3,10 @@ from __future__ import annotations
 from PySide6.QtGui import QColor, QPalette
 
 COLORS = {
-    "primary": "#526DFE",
-    "primary_dark": "#3E55DA",
-    "primary_soft": "#EEF1FF",
-    "accent": "#FF6B6B",
+    "primary": "#D86F78",
+    "primary_dark": "#B94F5A",
+    "primary_soft": "#FCEBED",
+    "accent": "#C44F5B",
     "teal": "#19B8A4",
     "amber": "#F3A83B",
     "background": "#F4F7FB",
@@ -32,7 +32,7 @@ QWidget {
     outline: none;
 }
 QFrame#Sidebar {
-    background: #17233C;
+    background: #B95762;
     border: none;
 }
 QLabel#BrandTitle {
@@ -41,7 +41,7 @@ QLabel#BrandTitle {
     font-weight: 700;
 }
 QLabel#BrandSub, QLabel#SidebarMuted {
-    color: #AEBAD0;
+    color: #FADDE0;
 }
 QLabel#PageTitle {
     color: #172033;
@@ -65,8 +65,8 @@ QFrame#Card, QFrame#ToolbarCard, QFrame#MetricCard {
     border-radius: 16px;
 }
 QFrame#PaymentPanel {
-    background: #F8FAFF;
-    border: 1px solid #DDE4FF;
+    background: #FFF8F8;
+    border: 1px solid #F1DADD;
     border-radius: 11px;
 }
 QPushButton {
@@ -90,17 +90,21 @@ QPushButton:disabled {
     background: #F3F5F8;
 }
 QPushButton#Primary {
-    background: #526DFE;
+    background: #D86F78;
     color: white;
-    border-color: #526DFE;
+    border-color: #D86F78;
 }
 QPushButton#Primary:hover {
-    background: #465FEA;
+    background: #C75F69;
 }
 QPushButton#Accent {
-    background: #FF6B6B;
-    color: white;
-    border-color: #FF6B6B;
+    background: #FADDE0;
+    color: #8E3540;
+    border-color: #FADDE0;
+}
+QPushButton#Accent:hover {
+    background: #FFF1F2;
+    border-color: #FFF1F2;
 }
 QPushButton#Danger {
     color: #C83E50;
@@ -113,16 +117,16 @@ QPushButton#NavButton {
     min-height: 45px;
     border: none;
     background: transparent;
-    color: #C9D2E3;
+    color: #FFF2F3;
     border-radius: 11px;
 }
 QPushButton#NavButton:hover {
     color: white;
-    background: #223252;
+    background: #AA4D57;
 }
 QPushButton#NavButton:checked {
     color: white;
-    background: #526DFE;
+    background: #913B46;
 }
 QLineEdit, QTextEdit, QPlainTextEdit, QComboBox, QDateEdit, QTimeEdit,
 QDoubleSpinBox {
@@ -131,23 +135,74 @@ QDoubleSpinBox {
     border-radius: 9px;
     padding: 7px 10px;
     min-height: 23px;
-    selection-background-color: #526DFE;
+    selection-background-color: #D86F78;
     selection-color: white;
 }
 QLineEdit:focus, QTextEdit:focus, QComboBox:focus, QDateEdit:focus,
 QTimeEdit:focus, QDoubleSpinBox:focus {
-    border: 2px solid #8395FF;
+    border: 2px solid #E79AA1;
     padding: 6px 9px;
 }
-QComboBox::drop-down, QDateEdit::drop-down, QTimeEdit::drop-down {
+QComboBox::drop-down {
     border: none;
     width: 28px;
+}
+QDateEdit {
+    padding-right: 42px;
+}
+QDateEdit:focus {
+    padding: 6px 41px 6px 9px;
+}
+QDateEdit::drop-down {
+    subcontrol-origin: border;
+    subcontrol-position: top right;
+    width: 38px;
+    background: #FCEBED;
+    border: none;
+    border-left: 1px solid #EECFD3;
+    border-top-right-radius: 9px;
+    border-bottom-right-radius: 9px;
+}
+QDateEdit::drop-down:hover {
+    background: #F7DADD;
+}
+QDateEdit::down-arrow {
+    image: none;
+    width: 0;
+    height: 0;
+}
+QTimeEdit::up-button, QTimeEdit::down-button,
+QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {
+    width: 0;
+    height: 0;
+    border: none;
+}
+QCheckBox {
+    spacing: 9px;
+}
+QCheckBox::indicator, QListView::indicator, QListWidget::indicator {
+    width: 18px;
+    height: 18px;
+    border: 2px solid #C65C66;
+    border-radius: 5px;
+    background: white;
+}
+QCheckBox::indicator:hover, QListView::indicator:hover,
+QListWidget::indicator:hover {
+    border-color: #A9434E;
+    background: #FFF5F6;
+}
+QCheckBox::indicator:checked, QListView::indicator:checked,
+QListWidget::indicator:checked {
+    background: #D86F78;
+    border-color: #B94F5A;
+    image: url(:/qt-project.org/styles/commonstyle/images/standardbutton-apply-16.png);
 }
 QComboBox QAbstractItemView {
     background: white;
     color: #172033;
     border: 1px solid #DCE3ED;
-    selection-background-color: #E9EDFF;
+    selection-background-color: #FCEBED;
     selection-color: #172033;
     padding: 5px;
 }
@@ -157,7 +212,7 @@ QComboBox QAbstractItemView::item {
     border-radius: 7px;
 }
 QComboBox QAbstractItemView::item:hover {
-    background: #F0F3FF;
+    background: #FFF1F2;
 }
 QListView#ComboPopup {
     background: white;
@@ -165,7 +220,7 @@ QListView#ComboPopup {
     border: 1px solid #DCE3ED;
     border-radius: 10px;
     padding: 5px;
-    selection-background-color: #E9EDFF;
+    selection-background-color: #FCEBED;
     selection-color: #172033;
 }
 QListView#ComboPopup::item {
@@ -174,7 +229,7 @@ QListView#ComboPopup::item {
     border-radius: 7px;
 }
 QListView#ComboPopup::item:hover {
-    background: #F0F3FF;
+    background: #FFF1F2;
 }
 QListWidget, QTableWidget, QTableView {
     background: white;
@@ -182,7 +237,7 @@ QListWidget, QTableWidget, QTableView {
     border: 1px solid #E3E9F2;
     border-radius: 11px;
     gridline-color: #EDF1F6;
-    selection-background-color: #E9EDFF;
+    selection-background-color: #FCEBED;
     selection-color: #172033;
 }
 QListWidget::item {
@@ -190,7 +245,7 @@ QListWidget::item {
     border-radius: 7px;
 }
 QListWidget::item:selected {
-    background: #E9EDFF;
+    background: #FCEBED;
     color: #172033;
 }
 QHeaderView::section {
@@ -219,7 +274,7 @@ QTabBar::tab {
 }
 QTabBar::tab:selected {
     color: white;
-    background: #526DFE;
+    background: #D86F78;
 }
 QScrollArea {
     background: transparent;
@@ -231,12 +286,12 @@ QScrollBar:vertical {
     margin: 4px 2px;
 }
 QScrollBar::handle:vertical {
-    background: #98A8C2;
+    background: #D9A5AA;
     min-height: 38px;
     border-radius: 5px;
 }
 QScrollBar::handle:vertical:hover {
-    background: #7184A4;
+    background: #BE737B;
 }
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
     height: 0;
@@ -251,12 +306,12 @@ QScrollBar:horizontal {
     margin: 2px 4px;
 }
 QScrollBar::handle:horizontal {
-    background: #98A8C2;
+    background: #D9A5AA;
     min-width: 38px;
     border-radius: 5px;
 }
 QScrollBar::handle:horizontal:hover {
-    background: #7184A4;
+    background: #BE737B;
 }
 QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
     width: 0;
@@ -271,7 +326,7 @@ QStatusBar {
     border-top: 1px solid #E3E9F2;
 }
 QToolTip {
-    background: #17233C;
+    background: #73323A;
     color: white;
     border: none;
     padding: 6px;
@@ -287,7 +342,7 @@ QCalendarWidget QWidget {
     color: #172033;
 }
 QCalendarWidget QWidget#qt_calendar_navigationbar {
-    background: #526DFE;
+    background: #D86F78;
     min-height: 42px;
 }
 QCalendarWidget QToolButton {
@@ -303,7 +358,7 @@ QCalendarWidget QToolButton:hover {
 }
 QCalendarWidget QSpinBox {
     color: white;
-    background: #465FEA;
+    background: #BE5964;
     selection-background-color: white;
     selection-color: #172033;
 }
@@ -311,7 +366,7 @@ QCalendarWidget QAbstractItemView {
     background: white;
     color: #172033;
     alternate-background-color: white;
-    selection-background-color: #526DFE;
+    selection-background-color: #D86F78;
     selection-color: white;
     border: none;
 }
@@ -332,6 +387,6 @@ def application_palette() -> QPalette:
     palette.setColor(QPalette.ColorRole.ButtonText, QColor(COLORS["text"]))
     palette.setColor(QPalette.ColorRole.Highlight, QColor(COLORS["primary"]))
     palette.setColor(QPalette.ColorRole.HighlightedText, QColor("#FFFFFF"))
-    palette.setColor(QPalette.ColorRole.ToolTipBase, QColor("#17233C"))
+    palette.setColor(QPalette.ColorRole.ToolTipBase, QColor("#73323A"))
     palette.setColor(QPalette.ColorRole.ToolTipText, QColor("#FFFFFF"))
     return palette

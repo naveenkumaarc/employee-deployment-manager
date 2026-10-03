@@ -311,10 +311,13 @@ class HistoryPage(QWidget):
         self.count_label.setObjectName("Muted")
         controls.addWidget(self.count_label)
         controls.addStretch()
+        copy = make_button("Copy selected")
         edit = make_button("Edit selected")
         delete = make_button("Delete selected", role="Danger")
+        copy.clicked.connect(self.copy_selected)
         edit.clicked.connect(self.edit_selected)
         delete.clicked.connect(self.delete_selected)
+        controls.addWidget(copy)
         controls.addWidget(edit)
         controls.addWidget(delete)
         layout.addLayout(controls)
@@ -435,6 +438,21 @@ class HistoryPage(QWidget):
         if DeploymentDialog(
             self.database,
             deployment_id=deployment_id,
+            parent=self,
+        ).exec():
+            self.refresh()
+            self.dataChanged.emit()
+
+    def copy_selected(self) -> None:
+        deployment_id = self.selected_id()
+        if deployment_id is None:
+            QMessageBox.information(
+                self, "Select a deployment", "Select a row to copy."
+            )
+            return
+        if DeploymentDialog(
+            self.database,
+            copy_from_id=deployment_id,
             parent=self,
         ).exec():
             self.refresh()

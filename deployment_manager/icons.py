@@ -19,31 +19,31 @@ from PySide6.QtGui import (
 APP_ICON_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
 <defs>
   <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
-    <stop offset="0" stop-color="#243B70"/>
-    <stop offset="1" stop-color="#112445"/>
+    <stop offset="0" stop-color="#E9959C"/>
+    <stop offset="1" stop-color="#C65C66"/>
   </linearGradient>
   <linearGradient id="blue" x1="0" y1="0" x2="1" y2="1">
-    <stop offset="0" stop-color="#6B82FF"/>
-    <stop offset="1" stop-color="#425DDB"/>
+    <stop offset="0" stop-color="#F8B7BC"/>
+    <stop offset="1" stop-color="#D86F78"/>
   </linearGradient>
 </defs>
 <rect x="28" y="28" width="456" height="456" rx="132" fill="url(#tile)"/>
 <rect x="104" y="112" width="304" height="270" rx="42" fill="#F8FAFF"/>
 <path d="M104 154c0-23 19-42 42-42h220c23 0 42 19 42 42v49H104z" fill="url(#blue)"/>
-<rect x="152" y="82" width="30" height="72" rx="15" fill="#172B53"/>
-<rect x="330" y="82" width="30" height="72" rx="15" fill="#172B53"/>
-<g fill="#CFD8EA">
+<rect x="152" y="82" width="30" height="72" rx="15" fill="#9E414C"/>
+<rect x="330" y="82" width="30" height="72" rx="15" fill="#9E414C"/>
+<g fill="#E8D9DB">
   <rect x="146" y="236" width="54" height="42" rx="10"/>
   <rect x="222" y="236" width="54" height="42" rx="10"/>
   <rect x="298" y="236" width="54" height="42" rx="10"/>
   <rect x="222" y="298" width="54" height="42" rx="10"/>
   <rect x="298" y="298" width="54" height="42" rx="10"/>
 </g>
-<circle cx="148" cy="320" r="39" fill="#EDF2FC"/>
-<path d="M79 408c0-48 31-82 69-82s69 34 69 82c0 15-138 15-138 0z" fill="#6B82FF"/>
-<path d="M365 258c-48 0-87 39-87 87 0 66 87 132 87 132s87-66 87-132c0-48-39-87-87-87z" fill="#FF6B6B"/>
+<circle cx="148" cy="320" r="39" fill="#FCEBED"/>
+<path d="M79 408c0-48 31-82 69-82s69 34 69 82c0 15-138 15-138 0z" fill="#F2A1A8"/>
+<path d="M365 258c-48 0-87 39-87 87 0 66 87 132 87 132s87-66 87-132c0-48-39-87-87-87z" fill="#B94F5A"/>
 <circle cx="365" cy="344" r="48" fill="#FFF"/>
-<path d="M338 345l18 18 37-42" fill="none" stroke="#FF5B5B" stroke-width="17" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M338 345l18 18 37-42" fill="none" stroke="#B94F5A" stroke-width="17" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>
 """
 
@@ -64,8 +64,8 @@ def _draw_icon(size: int) -> QImage:
     tile = QPainterPath()
     tile.addRoundedRect(QRectF(28, 28, 456, 456), 132, 132)
     tile_gradient = QLinearGradient(28, 28, 484, 484)
-    tile_gradient.setColorAt(0, QColor("#243B70"))
-    tile_gradient.setColorAt(1, QColor("#112445"))
+    tile_gradient.setColorAt(0, QColor("#E9959C"))
+    tile_gradient.setColorAt(1, QColor("#C65C66"))
     painter.fillPath(tile, QBrush(tile_gradient))
 
     calendar = QPainterPath()
@@ -73,30 +73,30 @@ def _draw_icon(size: int) -> QImage:
     painter.fillPath(calendar, QColor("#F8FAFF"))
     painter.setClipPath(calendar)
     header_gradient = QLinearGradient(104, 112, 408, 203)
-    header_gradient.setColorAt(0, QColor("#6B82FF"))
-    header_gradient.setColorAt(1, QColor("#425DDB"))
+    header_gradient.setColorAt(0, QColor("#F8B7BC"))
+    header_gradient.setColorAt(1, QColor("#D86F78"))
     painter.fillRect(QRectF(104, 112, 304, 91), QBrush(header_gradient))
     painter.setClipping(False)
 
     for x in (152, 330):
         ring = QPainterPath()
         ring.addRoundedRect(QRectF(x, 82, 30, 72), 15, 15)
-        painter.fillPath(ring, QColor("#172B53"))
+        painter.fillPath(ring, QColor("#9E414C"))
 
-    painter.setPen(QPen(QColor("#CFD8EA"), 1))
-    painter.setBrush(QColor("#CFD8EA"))
+    painter.setPen(QPen(QColor("#E8D9DB"), 1))
+    painter.setBrush(QColor("#E8D9DB"))
     for x, y in ((146, 236), (222, 236), (298, 236), (222, 298), (298, 298)):
         painter.drawRoundedRect(QRectF(x, y, 54, 42), 10, 10)
 
-    painter.setPen(QPen(QColor("#EDF2FC"), 1))
-    painter.setBrush(QColor("#EDF2FC"))
+    painter.setPen(QPen(QColor("#FCEBED"), 1))
+    painter.setBrush(QColor("#FCEBED"))
     painter.drawEllipse(QRectF(109, 281, 78, 78))
     body = QPainterPath()
     body.moveTo(79, 408)
     body.cubicTo(79, 360, 110, 326, 148, 326)
     body.cubicTo(186, 326, 217, 360, 217, 408)
     body.cubicTo(217, 423, 79, 423, 79, 408)
-    painter.fillPath(body, QColor("#6B82FF"))
+    painter.fillPath(body, QColor("#F2A1A8"))
 
     pin = QPainterPath()
     pin.moveTo(365, 258)
@@ -104,11 +104,11 @@ def _draw_icon(size: int) -> QImage:
     pin.cubicTo(278, 411, 365, 477, 365, 477)
     pin.cubicTo(365, 477, 452, 411, 452, 345)
     pin.cubicTo(452, 297, 413, 258, 365, 258)
-    painter.fillPath(pin, QColor("#FF6B6B"))
+    painter.fillPath(pin, QColor("#B94F5A"))
     painter.setBrush(QColor("#FFFFFF"))
     painter.setPen(QPen(QColor("#FFFFFF"), 1))
     painter.drawEllipse(QRectF(317, 296, 96, 96))
-    check_pen = QPen(QColor("#FF5B5B"), 17)
+    check_pen = QPen(QColor("#B94F5A"), 17)
     check_pen.setCapStyle(Qt.PenCapStyle.RoundCap)
     check_pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
     painter.setPen(check_pen)

@@ -11,7 +11,6 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QDialogButtonBox,
-    QDoubleSpinBox,
     QFormLayout,
     QFrame,
     QHBoxLayout,
@@ -25,7 +24,6 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QTabWidget,
     QTableWidgetItem,
-    QTimeEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -34,6 +32,8 @@ from .database import Database
 from .theme import COLORS
 from .widgets import (
     AdaptiveComboBox,
+    WheelSafeDoubleSpinBox,
+    WheelSafeTimeEdit,
     format_currency,
     make_button,
     make_date_edit,
@@ -42,8 +42,8 @@ from .widgets import (
 )
 
 EMPLOYEE_COLORS = [
-    ("Indigo", "#526DFE"),
-    ("Coral", "#FF6B6B"),
+    ("Pastel rose", "#D86F78"),
+    ("Coral", "#E9858D"),
     ("Teal", "#19B8A4"),
     ("Amber", "#F3A83B"),
     ("Violet", "#8B5CF6"),
@@ -432,30 +432,52 @@ class DeploymentDialog(QDialog):
         *,
         initial_date: QDate | None = None,
         deployment_id: int | None = None,
+        copy_from_id: int | None = None,
         parent: QWidget | None = None,
     ):
         super().__init__(parent)
+        if deployment_id is not None and copy_from_id is not None:
+            raise ValueError("Choose either edit or copy mode, not both.")
         self.database = database
         self.deployment_id = deployment_id
+        self.is_copy = copy_from_id is not None
+        source_id = deployment_id if deployment_id is not None else copy_from_id
         self.record = (
-            database.get_deployment(deployment_id) if deployment_id is not None else None
+            database.get_deployment(source_id) if source_id is not None else None
         )
-        self.setWindowTitle("Edit deployment" if self.record else "New deployment")
+        if source_id is not None and self.record is None:
+            raise ValueError("The selected deployment no longer exists.")
+        dialog_title = (
+            "Copy deployment"
+            if self.is_copy
+            else "Edit deployment"
+            if self.record
+            else "New deployment"
+        )
+        self.setWindowTitle(dialog_title)
         self.resize(650, 720)
         self.setMinimumSize(560, 560)
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(20, 18, 20, 18)
-        title = QLabel("Edit deployment" if self.record else "Create deployment")
+        title = QLabel(dialog_title if self.record else "Create deployment")
         title.setObjectName("PageTitle")
         outer.addWidget(title)
-        subtitle = QLabel(
-            "Assign one or several employees to a customer project and site. "
-            "A day rate applies separately to every selected employee."
-            if not self.record
-            else "Update this employee's deployment record."
-        )
+        if self.is_copy:
+            subtitle_text = (
+                "Choose the new deployment date. Work details are copied, while "
+                "status starts as Scheduled and payment starts as pending."
+            )
+        elif self.record:
+            subtitle_text = "Update this employee's deployment record."
+        else:
+            subtitle_text = (
+                "Assign one or several employees to a customer project and site. "
+                "A day rate applies separately to every selected employee."
+            )
+        subtitle = QLabel(subtitle_text)
         subtitle.setObjectName("Muted")
+        subtitle.setWordWrap(True)
         outer.addWidget(subtitle)
 
         scroll = QScrollArea()
@@ -469,7 +491,11 @@ class DeploymentDialog(QDialog):
         outer.addWidget(scroll, 1)
 
         value_date = initial_date or QDate.currentDate()
-        if self.record:
+        if self.record and self.is_copy and initial_date is None:
+            value_date = QDate.fromString(
+                self.record["work_date"], "yyyy-MM-dd"
+            ).addDays(1)
+        elif self.record and not self.is_copy:
             value_date = QDate.fromString(self.record["work_date"], "yyyy-MM-dd")
         self.work_date = make_date_edit(value_date)
         form.addRow("Deployment date *", self.work_date)
@@ -516,9 +542,9 @@ class DeploymentDialog(QDialog):
         time_layout = QHBoxLayout(time_row)
         time_layout.setContentsMargins(0, 0, 0, 0)
         time_layout.setSpacing(9)
-        self.start_time = QTimeEdit(QTime(9, 0))
+        self.start_time = WheelSafeTimeEdit(QTime(9, 0))
         self.start_time.setDisplayFormat("hh:mm AP")
-        self.end_time = QTimeEdit(QTime(18, 0))
+        self.end_time = WheelSafeTimeEdit(QTime(18, 0))
         self.end_time.setDisplayFormat("hh:mm AP")
         time_layout.addWidget(self.start_time)
         time_layout.addWidget(_plain_label("to", muted=True))
@@ -546,7 +572,7 @@ class DeploymentDialog(QDialog):
         payment_layout = QHBoxLayout(self.payment_panel)
         payment_layout.setContentsMargins(12, 8, 12, 8)
         payment_layout.setSpacing(10)
-        self.day_rate = QDoubleSpinBox()
+        self.day_rate = WheelSafeDoubleSpinBox()
         self.day_rate.setDecimals(2)
         self.day_rate.setRange(0, 10_000_000)
         self.day_rate.setSingleStep(100)
@@ -575,6 +601,10 @@ class DeploymentDialog(QDialog):
             | QDialogButtonBox.StandardButton.Cancel
         )
         self.buttons.button(QDialogButtonBox.StandardButton.Save).setObjectName("Primary")
+        if self.is_copy:
+            self.buttons.button(QDialogButtonBox.StandardButton.Save).setText(
+                "Create copy"
+            )
         self.buttons.accepted.connect(self._save)
         self.buttons.rejected.connect(self.reject)
         outer.addWidget(self.buttons)
@@ -648,6 +678,9 @@ class DeploymentDialog(QDialog):
         )
         self.day_basis.setChecked(bool(self.record.get("day_basis", 0)))
         self.notes.setPlainText(self.record.get("notes") or "")
+        if self.is_copy:
+            self.status.setCurrentText("Scheduled")
+            self.payment_completed.setChecked(False)
 
     def _sync_payment_controls(self, enabled: bool) -> None:
         self.payment_panel.setVisible(enabled)
@@ -859,14 +892,19 @@ class DayEntriesDialog(QDialog):
                 details.addWidget(note)
             card_layout.addLayout(details, 1)
 
+            copy = make_button("Copy")
             edit = make_button("Edit")
             delete = make_button("Delete", role="Danger")
+            copy.clicked.connect(
+                lambda _checked=False, item_id=row["id"]: self._copy(item_id)
+            )
             edit.clicked.connect(
                 lambda _checked=False, item_id=row["id"]: self._edit(item_id)
             )
             delete.clicked.connect(
                 lambda _checked=False, item_id=row["id"]: self._delete(item_id)
             )
+            card_layout.addWidget(copy)
             card_layout.addWidget(edit)
             card_layout.addWidget(delete)
             self.cards.addWidget(card)
@@ -882,6 +920,13 @@ class DayEntriesDialog(QDialog):
     def _edit(self, deployment_id: int) -> None:
         if DeploymentDialog(
             self.database, deployment_id=deployment_id, parent=self
+        ).exec():
+            self.changed = True
+            self._rebuild()
+
+    def _copy(self, deployment_id: int) -> None:
+        if DeploymentDialog(
+            self.database, copy_from_id=deployment_id, parent=self
         ).exec():
             self.changed = True
             self._rebuild()

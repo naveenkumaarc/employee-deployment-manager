@@ -38,7 +38,7 @@ class MainWindow(QMainWindow):
         super().__init__(parent)
         self.database = database
         self.app_data_directory = app_data_directory
-        self.setWindowTitle(f"{APP_NAME} — Employee Deployment Manager")
+        self.setWindowTitle(APP_NAME)
         self.setWindowIcon(app_icon())
         self.resize(1480, 900)
         self.setMinimumSize(1180, 720)
@@ -136,8 +136,8 @@ class MainWindow(QMainWindow):
 
         backup = make_button("Back up database")
         backup.setStyleSheet(
-            "QPushButton { color:#D8E0EF; background:#223252; border:none; }"
-            "QPushButton:hover { background:#2A3D63; color:white; }"
+            "QPushButton { color:#FFF4F5; background:#A94C56; border:none; }"
+            "QPushButton:hover { background:#963E49; color:white; }"
         )
         backup.clicked.connect(self.backup_database)
         layout.addWidget(backup)
@@ -151,7 +151,7 @@ class MainWindow(QMainWindow):
     def _sidebar_stat(self, value: str, caption: str) -> tuple[QFrame, QLabel]:
         frame = QFrame()
         frame.setStyleSheet(
-            "QFrame { background:#20304E; border-radius:11px; }"
+            "QFrame { background:#AA4D57; border-radius:11px; }"
             "QLabel { background:transparent; }"
         )
         frame_layout = QHBoxLayout(frame)
@@ -162,7 +162,7 @@ class MainWindow(QMainWindow):
         )
         caption_label = QLabel(caption)
         caption_label.setStyleSheet(
-            "color:#AEBAD0; background:transparent; font-size:9pt;"
+            "color:#FADDE0; background:transparent; font-size:9pt;"
         )
         frame_layout.addWidget(value_label)
         frame_layout.addWidget(caption_label, 1)

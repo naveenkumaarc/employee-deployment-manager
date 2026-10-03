@@ -6,9 +6,11 @@ from PySide6.QtCore import QDate, QRect, Qt, Signal
 from PySide6.QtGui import QColor, QFontMetrics, QPainter, QPen, QWheelEvent
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QAbstractSpinBox,
     QCalendarWidget,
     QComboBox,
     QDateEdit,
+    QDoubleSpinBox,
     QFrame,
     QGraphicsDropShadowEffect,
     QHBoxLayout,
@@ -20,6 +22,7 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QTableView,
     QTableWidget,
+    QTimeEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -73,6 +76,54 @@ class AdaptiveComboBox(QComboBox):
         popup.setMinimumWidth(popup_width)
         popup.setMinimumHeight(popup_height)
 
+    def wheelEvent(self, event: QWheelEvent) -> None:
+        """Let the surrounding page scroll without changing the selection."""
+        event.ignore()
+
+
+class WheelSafeDateEdit(QDateEdit):
+    """Date field with a visible calendar affordance and no wheel changes."""
+
+    def wheelEvent(self, event: QWheelEvent) -> None:
+        event.ignore()
+
+    def paintEvent(self, event) -> None:
+        super().paintEvent(event)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setPen(QPen(QColor(COLORS["primary_dark"]), 2))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+
+        left = self.width() - 29
+        top = max(5, (self.height() - 16) // 2)
+        calendar = QRect(left, top + 2, 16, 14)
+        painter.drawRoundedRect(calendar, 2, 2)
+        painter.drawLine(left, top + 7, left + 16, top + 7)
+        painter.drawLine(left + 4, top, left + 4, top + 5)
+        painter.drawLine(left + 12, top, left + 12, top + 5)
+
+
+class WheelSafeTimeEdit(QTimeEdit):
+    """Time field without legacy spin buttons or mouse-wheel changes."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
+
+    def wheelEvent(self, event: QWheelEvent) -> None:
+        event.ignore()
+
+
+class WheelSafeDoubleSpinBox(QDoubleSpinBox):
+    """Numeric field that changes only through deliberate typing/keyboard input."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
+
+    def wheelEvent(self, event: QWheelEvent) -> None:
+        event.ignore()
+
 
 def make_button(
     text: str,
@@ -119,7 +170,7 @@ def fill_combo(
 
 
 def make_date_edit(value: QDate | None = None) -> QDateEdit:
-    edit = QDateEdit(value or QDate.currentDate())
+    edit = WheelSafeDateEdit(value or QDate.currentDate())
     edit.setCalendarPopup(True)
     edit.setDisplayFormat("dd MMM yyyy")
     edit.setMinimumWidth(145)
@@ -178,7 +229,7 @@ class MetricCard(QFrame):
         self,
         label: str,
         value: str = "0",
-        accent: str = "#526DFE",
+        accent: str = "#D86F78",
         parent: QWidget | None = None,
     ):
         super().__init__(parent)

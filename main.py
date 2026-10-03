@@ -35,7 +35,7 @@ def main() -> int:
     source_assets = Path(__file__).resolve().parent / "assets"
     if not getattr(sys, "frozen", False):
         try:
-            write_icon_assets(source_assets)
+            write_icon_assets(source_assets, overwrite=True)
         except OSError:
             pass
     app.setWindowIcon(app_icon())
@@ -51,7 +51,7 @@ def main() -> int:
         return 1
 
     window = MainWindow(database, app_data_directory())
-    window.show()
+    window.showMaximized()
     exit_code = app.exec()
     database.close()
     return exit_code

@@ -9,6 +9,7 @@ Deployment Desk is a modern, offline employee deployment manager built with Pyth
 - Shows roughly three quarters of the window as a large monthly deployment calendar.
 - Opens a new deployment form when you click an empty date.
 - Opens that day's assignments when you click a date that already has entries.
+- Copies an existing deployment to another date while keeping the original record.
 - Assigns one or many employees to a customer, project and site in one step.
 - Records optional day-basis work, an amount per employee per day, and whether
   that payment is completed or pending.
@@ -20,7 +21,9 @@ Deployment Desk is a modern, offline employee deployment manager built with Pyth
 - Filters history and reports by pending or completed payment status.
 - Exports formatted summary and detailed worksheets to Excel.
 - Stores data locally in SQLite and includes a one-click database backup.
-- Uses a polished SoftMaterial interface and a transparent rounded-square icon.
+- Opens maximized with a polished pastel-red SoftMaterial interface and a
+  matching transparent rounded-square icon.
+- Prevents accidental mouse-wheel changes in date, time, amount and selection fields.
 
 ## Start on Windows
 
@@ -57,8 +60,10 @@ The executable is self-contained; Python is not required on the destination PC.
 ## Everyday workflow
 
 - **Create deployment:** use the coral button in the left sidebar, or press `Ctrl+N`.
-- **Calendar:** click an empty date to add work; click a populated date to review, edit, delete or add more.
-- **History:** filter by date, employee, customer, project, site, status or payment.
+- **Calendar:** click an empty date to add work; click a populated date to review,
+  copy, edit, delete or add more.
+- **History:** filter by date, employee, customer, project, site, status or payment;
+  select a row and use **Copy selected** to schedule the same work on a new date.
 - **Reports:** choose a grouping and any date range, review total/completed/pending
   day-basis amounts, then export the full report to `.xlsx`.
 - **Directory:** deactivate old employees, customers, projects or sites without losing historical records.

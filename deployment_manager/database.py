@@ -49,7 +49,7 @@ class Database:
                 designation TEXT NOT NULL DEFAULT '',
                 phone TEXT NOT NULL DEFAULT '',
                 email TEXT NOT NULL DEFAULT '',
-                color TEXT NOT NULL DEFAULT '#526DFE',
+                color TEXT NOT NULL DEFAULT '#D86F78',
                 active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0, 1)),
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
@@ -237,7 +237,7 @@ class Database:
         payload["active"] = int(bool(payload.get("active", True)))
         if entity == "employee":
             payload["employee_code"] = str(payload["employee_code"]).strip() or None
-            payload["color"] = str(payload["color"]).strip() or "#526DFE"
+            payload["color"] = str(payload["color"]).strip() or "#D86F78"
 
         for required in ("name",):
             if not str(payload.get(required, "")).strip():
