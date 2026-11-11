@@ -40,7 +40,6 @@ def seed(database: Database) -> None:
     site = database.save_master(
         "site",
         {
-            "customer_id": customer,
             "name": "Test Site",
             "city": "Chennai",
             "active": True,
@@ -196,6 +195,37 @@ def test_deployment_date_navigation_preserves_form_state_and_rolls_over(tmp_path
         dialog.previous_date_button.click()
         assert dialog.work_date.date() == QDate(2028, 2, 29)
         assert dialog.work_date.displayFormat() == "dd MMM yyyy"
+        dialog.close()
+        app.processEvents()
+    finally:
+        database.close()
+
+
+def test_deployment_site_picker_lists_all_sites_independent_of_customer(tmp_path):
+    app = QApplication.instance() or QApplication([])
+    database = Database(tmp_path / "site_picker.db")
+    try:
+        seed(database)
+        second_customer = database.save_master(
+            "customer", {"name": "Another Customer", "active": True}
+        )
+        second_site = database.save_master(
+            "site", {"name": "Independent Site", "city": "Pune", "active": True}
+        )
+        dialog = DeploymentDialog(database, initial_date=QDate.currentDate())
+
+        site_ids = {
+            dialog.site.itemData(index) for index in range(1, dialog.site.count())
+        }
+        assert second_site in site_ids
+        assert "customer_id" not in database.get_master("site", second_site)
+
+        dialog.site.setCurrentIndex(dialog.site.findData(second_site))
+        dialog.customer.setCurrentIndex(dialog.customer.findData(second_customer))
+        assert dialog.site.currentData() == second_site
+        assert {
+            dialog.site.itemData(index) for index in range(1, dialog.site.count())
+        } == site_ids
         dialog.close()
         app.processEvents()
     finally:

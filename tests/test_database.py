@@ -64,7 +64,6 @@ def seed_directory(database: Database) -> dict[str, int]:
     site = database.save_master(
         "site",
         {
-            "customer_id": customer,
             "name": "North Plant",
             "city": "Pune",
             "address": "North industrial estate",
@@ -173,16 +172,20 @@ def test_validation_and_backup(database: Database, tmp_path):
     other_site = database.save_master(
         "site",
         {
-            "customer_id": other_customer,
             "name": "Contoso Yard",
             "active": True,
         },
     )
 
-    invalid = deployment_values(ids, "2026-01-15")
-    invalid["site_id"] = other_site
-    with pytest.raises(ValueError, match="site does not belong"):
-        database.add_deployments(invalid, [ids["employee_one"]])
+    independent_site = deployment_values(ids, "2026-01-15")
+    independent_site["site_id"] = other_site
+    created = database.add_deployments(independent_site, [ids["employee_one"]])
+    assert database.get_deployment(created[0])["site_name"] == "Contoso Yard"
+
+    invalid_project = deployment_values(ids, "2026-01-16")
+    invalid_project["customer_id"] = other_customer
+    with pytest.raises(ValueError, match="project does not belong"):
+        database.add_deployments(invalid_project, [ids["employee_one"]])
 
     invalid_time = deployment_values(ids, "2026-01-15")
     invalid_time["start_time"] = "18:00"
@@ -195,9 +198,6 @@ def test_validation_and_backup(database: Database, tmp_path):
     with pytest.raises(ValueError, match="greater than zero"):
         database.add_deployments(invalid_rate, [ids["employee_one"]])
 
-    database.add_deployments(
-        deployment_values(ids, "2026-01-15"), [ids["employee_one"]]
-    )
     backup_path = database.backup_to(tmp_path / "backups" / "copy.db")
     assert backup_path.exists()
 
@@ -296,10 +296,117 @@ def test_existing_version_one_database_migrates_without_data_loss(tmp_path):
             for row in migrated.connection.execute("PRAGMA table_info(deployments)")
         }
         assert {"day_basis", "day_rate", "payment_completed"}.issubset(columns)
-        assert migrated.connection.execute("PRAGMA user_version").fetchone()[0] == 2
+        assert migrated.connection.execute("PRAGMA user_version").fetchone()[0] == 3
         row = migrated.connection.execute(
             "SELECT notes, day_basis, day_rate, payment_completed FROM deployments"
         ).fetchone()
         assert tuple(row) == ("Legacy record preserved", 0, 0.0, 0)
+    finally:
+        migrated.close()
+
+
+def test_sites_are_standalone_soft_deleted_and_missing_references_are_visible(
+    database: Database,
+):
+    ids = seed_directory(database)
+    deployment_id = database.add_deployments(
+        deployment_values(ids, "2026-10-07"), [ids["employee_one"]]
+    )[0]
+
+    database.soft_delete_site(ids["site"])
+    assert database.list_master("site", active_only=True) == []
+    deleted_site = database.get_master("site", ids["site"])
+    assert deleted_site is not None and deleted_site["deleted_at"]
+    assert database.get_deployment(deployment_id)["site_name"] == "North Plant"
+
+    database.restore_site(ids["site"])
+    assert database.list_master("site", active_only=True)[0]["id"] == ids["site"]
+
+    database.connection.execute("PRAGMA foreign_keys = OFF")
+    database.connection.execute("DELETE FROM sites WHERE id = ?", (ids["site"],))
+    database.connection.commit()
+    row = database.get_deployment(deployment_id)
+    assert row is not None
+    assert row["site_name"] == f"[Missing site #{ids['site']}]"
+    database.connection.execute("PRAGMA foreign_keys = ON")
+
+
+def test_version_two_site_migration_preserves_ids_and_deployments(tmp_path):
+    path = tmp_path / "version_two.db"
+    connection = sqlite3.connect(path)
+    connection.executescript(
+        """
+        PRAGMA foreign_keys = ON;
+        CREATE TABLE employees (
+            id INTEGER PRIMARY KEY, employee_code TEXT, name TEXT NOT NULL,
+            designation TEXT NOT NULL DEFAULT '', phone TEXT NOT NULL DEFAULT '',
+            email TEXT NOT NULL DEFAULT '', color TEXT NOT NULL DEFAULT '#00643C',
+            active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE TABLE customers (
+            id INTEGER PRIMARY KEY, name TEXT NOT NULL, contact_person TEXT NOT NULL DEFAULT '',
+            phone TEXT NOT NULL DEFAULT '', email TEXT NOT NULL DEFAULT '',
+            address TEXT NOT NULL DEFAULT '', active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+        );
+        CREATE TABLE projects (
+            id INTEGER PRIMARY KEY, customer_id INTEGER NOT NULL,
+            project_code TEXT NOT NULL DEFAULT '', name TEXT NOT NULL,
+            description TEXT NOT NULL DEFAULT '', active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+            FOREIGN KEY(customer_id) REFERENCES customers(id)
+        );
+        CREATE TABLE sites (
+            id INTEGER PRIMARY KEY, customer_id INTEGER NOT NULL, name TEXT NOT NULL,
+            city TEXT NOT NULL DEFAULT '', address TEXT NOT NULL DEFAULT '',
+            active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(customer_id) REFERENCES customers(id)
+        );
+        CREATE TABLE deployments (
+            id INTEGER PRIMARY KEY, work_date TEXT NOT NULL, employee_id INTEGER NOT NULL,
+            customer_id INTEGER NOT NULL, project_id INTEGER NOT NULL, site_id INTEGER NOT NULL,
+            start_time TEXT NOT NULL, end_time TEXT NOT NULL, work_type TEXT NOT NULL,
+            status TEXT NOT NULL, day_basis INTEGER NOT NULL DEFAULT 0,
+            day_rate REAL NOT NULL DEFAULT 0, payment_completed INTEGER NOT NULL DEFAULT 0,
+            notes TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+            FOREIGN KEY(employee_id) REFERENCES employees(id),
+            FOREIGN KEY(customer_id) REFERENCES customers(id),
+            FOREIGN KEY(project_id) REFERENCES projects(id),
+            FOREIGN KEY(site_id) REFERENCES sites(id)
+        );
+        INSERT INTO employees VALUES
+            (1, 'E-1', 'Legacy Employee', '', '', '', '#00643C', 1, '2026-01-01', '2026-01-01');
+        INSERT INTO customers VALUES
+            (1, 'Legacy Customer', '', '', '', '', 1, '2026-01-01', '2026-01-01');
+        INSERT INTO projects VALUES
+            (1, 1, 'P-1', 'Legacy Project', '', 1, '2026-01-01', '2026-01-01');
+        INSERT INTO sites VALUES
+            (7, 1, 'Legacy Site', 'Chennai', '', 1, '2026-01-01', '2026-01-01');
+        INSERT INTO deployments VALUES
+            (9, '2026-10-08', 1, 1, 1, 7, '09:00', '18:00', 'Full day',
+             'Completed', 1, 4500, 1, 'Preserve me', '2026-01-01', '2026-01-01');
+        PRAGMA user_version = 2;
+        """
+    )
+    connection.close()
+
+    migrated = Database(path)
+    try:
+        site_columns = {
+            row["name"]
+            for row in migrated.connection.execute("PRAGMA table_info(sites)")
+        }
+        assert "customer_id" not in site_columns
+        assert "deleted_at" in site_columns
+        assert migrated.get_master("site", 7)["name"] == "Legacy Site"
+        deployment = migrated.get_deployment(9)
+        assert deployment is not None
+        assert deployment["site_id"] == 7
+        assert deployment["site_name"] == "Legacy Site"
+        assert deployment["payment_completed"] == 1
+        assert migrated.connection.execute("PRAGMA foreign_key_check").fetchall() == []
+        assert migrated.connection.execute("PRAGMA user_version").fetchone()[0] == 3
     finally:
         migrated.close()

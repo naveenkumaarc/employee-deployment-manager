@@ -17,7 +17,7 @@ ENTITY_FIELDS = {
     "employee": ("employee_code", "name", "designation", "phone", "email", "color", "active"),
     "customer": ("name", "contact_person", "phone", "email", "address", "active"),
     "project": ("customer_id", "project_code", "name", "description", "active"),
-    "site": ("customer_id", "name", "city", "address", "active"),
+    "site": ("name", "city", "address", "active"),
 }
 
 
@@ -82,15 +82,13 @@ class Database:
 
             CREATE TABLE IF NOT EXISTS sites (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                customer_id INTEGER NOT NULL,
                 name TEXT NOT NULL COLLATE NOCASE,
                 city TEXT NOT NULL DEFAULT '',
                 address TEXT NOT NULL DEFAULT '',
                 active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0, 1)),
+                deleted_at TEXT,
                 created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL,
-                FOREIGN KEY(customer_id) REFERENCES customers(id) ON DELETE RESTRICT,
-                UNIQUE(customer_id, name)
+                updated_at TEXT NOT NULL
             );
 
             CREATE TABLE IF NOT EXISTS deployments (
@@ -129,14 +127,14 @@ class Database:
             CREATE UNIQUE INDEX IF NOT EXISTS uq_deployment_exact
                 ON deployments(work_date, employee_id, project_id, site_id, start_time);
 
-            PRAGMA user_version = 2;
+            PRAGMA user_version = 3;
             """
         )
         self._migrate_schema()
         self.connection.commit()
 
     def _migrate_schema(self) -> None:
-        """Add payment fields to databases created by Deployment Desk 1.0."""
+        """Bring older databases forward without changing deployment IDs."""
         columns = {
             row["name"]
             for row in self.connection.execute("PRAGMA table_info(deployments)")
@@ -158,7 +156,56 @@ class Database:
         for column, statement in migrations.items():
             if column not in columns:
                 self.connection.execute(statement)
-        self.connection.execute("PRAGMA user_version = 2")
+        self._migrate_sites_to_standalone()
+        self.connection.execute("PRAGMA user_version = 3")
+
+    def _migrate_sites_to_standalone(self) -> None:
+        """Remove the legacy customer link while preserving every site ID."""
+        columns = {
+            row["name"] for row in self.connection.execute("PRAGMA table_info(sites)")
+        }
+        if "customer_id" not in columns:
+            if "deleted_at" not in columns:
+                self.connection.execute("ALTER TABLE sites ADD COLUMN deleted_at TEXT")
+            return
+
+        # Rebuilding is the only SQLite-supported way to remove a column and its
+        # foreign key. Enforcement is paused only while IDs are copied verbatim.
+        self.connection.commit()
+        self.connection.execute("PRAGMA foreign_keys = OFF")
+        try:
+            self.connection.execute("BEGIN IMMEDIATE")
+            self.connection.execute(
+                """
+                CREATE TABLE sites_standalone (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL COLLATE NOCASE,
+                    city TEXT NOT NULL DEFAULT '',
+                    address TEXT NOT NULL DEFAULT '',
+                    active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0, 1)),
+                    deleted_at TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
+            self.connection.execute(
+                """
+                INSERT INTO sites_standalone (
+                    id, name, city, address, active, deleted_at, created_at, updated_at
+                )
+                SELECT id, name, city, address, active, NULL, created_at, updated_at
+                FROM sites
+                """
+            )
+            self.connection.execute("DROP TABLE sites")
+            self.connection.execute("ALTER TABLE sites_standalone RENAME TO sites")
+            self.connection.commit()
+        except Exception:
+            self.connection.rollback()
+            raise
+        finally:
+            self.connection.execute("PRAGMA foreign_keys = ON")
 
     @staticmethod
     def _dicts(rows: Iterable[sqlite3.Row]) -> list[dict[str, Any]]:
@@ -174,7 +221,8 @@ class Database:
                 (SELECT COUNT(*) FROM employees WHERE active = 1) AS employees,
                 (SELECT COUNT(*) FROM customers WHERE active = 1) AS customers,
                 (SELECT COUNT(*) FROM projects WHERE active = 1) AS projects,
-                (SELECT COUNT(*) FROM sites WHERE active = 1) AS sites
+                (SELECT COUNT(*) FROM sites
+                 WHERE active = 1 AND deleted_at IS NULL) AS sites
             """
         ).fetchone()
         return bool(row and all(row[key] > 0 for key in row.keys()))
@@ -193,12 +241,14 @@ class Database:
         params: list[Any] = []
         if active_only:
             where.append("t.active = 1")
-        if customer_id is not None and entity in {"project", "site"}:
+        if active_only and entity == "site":
+            where.append("t.deleted_at IS NULL")
+        if customer_id is not None and entity == "project":
             where.append("t.customer_id = ?")
             params.append(customer_id)
         where_sql = f"WHERE {' AND '.join(where)}" if where else ""
 
-        if entity in {"project", "site"}:
+        if entity == "project":
             sql = f"""
                 SELECT t.*, c.name AS customer_name
                 FROM {ENTITY_TABLES[entity]} t
@@ -213,7 +263,17 @@ class Database:
                 {where_sql}
                 ORDER BY t.name COLLATE NOCASE
             """
-        return self._dicts(self.connection.execute(sql, params).fetchall())
+        rows = self._dicts(self.connection.execute(sql, params).fetchall())
+        if entity == "site":
+            for row in rows:
+                row["display_name"] = row["name"] + (
+                    " (deleted)"
+                    if row.get("deleted_at")
+                    else ""
+                    if row["active"]
+                    else " (inactive)"
+                )
+        return rows
 
     def get_master(self, entity: str, record_id: int) -> dict[str, Any] | None:
         if entity not in ENTITY_TABLES:
@@ -244,7 +304,7 @@ class Database:
                 raise ValueError("Name is required.")
             payload[required] = str(payload[required]).strip()
 
-        if entity in {"project", "site"} and not payload.get("customer_id"):
+        if entity == "project" and not payload.get("customer_id"):
             raise ValueError("Customer is required.")
 
         now = utc_now()
@@ -279,6 +339,36 @@ class Database:
         )
         self.connection.commit()
 
+    def soft_delete_site(self, site_id: int) -> None:
+        """Hide a site from future work without breaking historical deployments."""
+        now = utc_now()
+        cursor = self.connection.execute(
+            """
+            UPDATE sites
+            SET active = 0, deleted_at = ?, updated_at = ?
+            WHERE id = ? AND deleted_at IS NULL
+            """,
+            (now, now, site_id),
+        )
+        if cursor.rowcount != 1:
+            self.connection.rollback()
+            raise ValueError("The selected site no longer exists or is already deleted.")
+        self.connection.commit()
+
+    def restore_site(self, site_id: int) -> None:
+        cursor = self.connection.execute(
+            """
+            UPDATE sites
+            SET active = 1, deleted_at = NULL, updated_at = ?
+            WHERE id = ? AND deleted_at IS NOT NULL
+            """,
+            (utc_now(), site_id),
+        )
+        if cursor.rowcount != 1:
+            self.connection.rollback()
+            raise ValueError("The selected deleted site no longer exists.")
+        self.connection.commit()
+
     def _validate_relationships(
         self, customer_id: int, project_id: int, site_id: int
     ) -> None:
@@ -286,14 +376,12 @@ class Database:
             "SELECT customer_id FROM projects WHERE id = ?", (project_id,)
         ).fetchone()
         site = self.connection.execute(
-            "SELECT customer_id FROM sites WHERE id = ?", (site_id,)
+            "SELECT id FROM sites WHERE id = ?", (site_id,)
         ).fetchone()
         if not project or not site:
             raise ValueError("The selected project or site no longer exists.")
         if project["customer_id"] != customer_id:
             raise ValueError("The selected project does not belong to this customer.")
-        if site["customer_id"] != customer_id:
-            raise ValueError("The selected site does not belong to this customer.")
 
     @staticmethod
     def _validate_deployment(values: dict[str, Any]) -> None:
@@ -341,12 +429,13 @@ class Database:
             f"""
             SELECT d.id, d.employee_id, e.name AS employee_name,
                    c.name AS customer_name, p.name AS project_name,
-                   s.name AS site_name, d.start_time, d.end_time
+                   COALESCE(s.name, '[Missing site #' || d.site_id || ']') AS site_name,
+                   d.start_time, d.end_time
             FROM deployments d
             JOIN employees e ON e.id = d.employee_id
             JOIN customers c ON c.id = d.customer_id
             JOIN projects p ON p.id = d.project_id
-            JOIN sites s ON s.id = d.site_id
+            LEFT JOIN sites s ON s.id = d.site_id
             WHERE d.work_date = ?
               AND d.employee_id IN ({marks})
               AND d.status <> 'Cancelled'
@@ -508,7 +597,8 @@ class Database:
             conditions.append(
                 """
                 (e.name LIKE ? OR c.name LIKE ? OR p.name LIKE ? OR
-                 p.project_code LIKE ? OR s.name LIKE ? OR s.city LIKE ? OR
+                 p.project_code LIKE ? OR COALESCE(s.name, '') LIKE ? OR
+                 COALESCE(s.city, '') LIKE ? OR
                  d.notes LIKE ?)
                 """
             )
@@ -522,12 +612,14 @@ class Database:
                    e.designation, e.color AS employee_color,
                    c.name AS customer_name,
                    p.project_code, p.name AS project_name,
-                   s.name AS site_name, s.city AS site_city
+                   COALESCE(s.name, '[Missing site #' || d.site_id || ']') AS site_name,
+                   COALESCE(s.city, '') AS site_city,
+                   s.deleted_at AS site_deleted_at
             FROM deployments d
             JOIN employees e ON e.id = d.employee_id
             JOIN customers c ON c.id = d.customer_id
             JOIN projects p ON p.id = d.project_id
-            JOIN sites s ON s.id = d.site_id
+            LEFT JOIN sites s ON s.id = d.site_id
             {where_sql}
             ORDER BY d.work_date ASC, d.start_time ASC, e.name COLLATE NOCASE ASC
             """,

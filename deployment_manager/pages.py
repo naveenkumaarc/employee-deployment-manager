@@ -370,6 +370,7 @@ class HistoryPage(QWidget):
             self.database.list_master("site"),
             include_all=True,
             all_label="All sites",
+            label_key="display_name",
         )
 
     def reset_filters(self) -> None:
@@ -606,6 +607,7 @@ class ReportsPage(QWidget):
             self.database.list_master("site"),
             include_all=True,
             all_label="All sites",
+            label_key="display_name",
         )
 
     def _query(self) -> list[dict[str, Any]]:

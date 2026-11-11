@@ -64,7 +64,7 @@ MASTER_COLUMNS = {
     "employee": ["Code", "Employee", "Designation", "Phone", "Status"],
     "customer": ["Customer", "Contact person", "Phone", "Address", "Status"],
     "project": ["Code", "Project", "Customer", "Description", "Status"],
-    "site": ["Site", "Customer", "City", "Address", "Status"],
+    "site": ["Site", "City", "Address", "Status"],
 }
 
 
@@ -199,9 +199,6 @@ class MasterEditorDialog(QDialog):
                 self.form.addRow(label, widget)
 
         elif self.entity == "site":
-            customer = self._customer_combo()
-            self.fields["customer_id"] = customer
-            self.form.addRow("Customer *", customer)
             specs = (
                 ("name", "Site name *", self._line("Plant, unit or facility")),
                 ("city", "City / location", self._line()),
@@ -268,14 +265,19 @@ class MasterTab(QWidget):
         controls.addWidget(self.search, 1)
 
         add_button = make_button(f"Add {MASTER_TITLES[entity]}", role="Primary")
-        edit_button = make_button("Edit")
+        self.edit_button = make_button("Edit")
         self.toggle_button = make_button("Deactivate", role="Danger")
         add_button.clicked.connect(self.add_record)
-        edit_button.clicked.connect(self.edit_record)
+        self.edit_button.clicked.connect(self.edit_record)
         self.toggle_button.clicked.connect(self.toggle_record)
         controls.addWidget(add_button)
-        controls.addWidget(edit_button)
+        controls.addWidget(self.edit_button)
         controls.addWidget(self.toggle_button)
+        self.delete_button: QPushButton | None = None
+        if self.entity == "site":
+            self.delete_button = make_button("Delete", role="Danger")
+            self.delete_button.clicked.connect(self.delete_site)
+            controls.addWidget(self.delete_button)
         layout.addLayout(controls)
 
         self.table = make_table(MASTER_COLUMNS[entity])
@@ -285,7 +287,13 @@ class MasterTab(QWidget):
         self.refresh()
 
     def _display_values(self, row: dict[str, Any]) -> list[str]:
-        status = "Active" if row["active"] else "Inactive"
+        status = (
+            "Deleted"
+            if self.entity == "site" and row.get("deleted_at")
+            else "Active"
+            if row["active"]
+            else "Inactive"
+        )
         if self.entity == "employee":
             return [
                 row.get("employee_code") or "",
@@ -312,7 +320,6 @@ class MasterTab(QWidget):
             ]
         return [
             row["name"],
-            row.get("customer_name") or "",
             row.get("city") or "",
             row.get("address") or "",
             status,
@@ -342,7 +349,7 @@ class MasterTab(QWidget):
                 item = QTableWidgetItem(value)
                 if column == 0:
                     item.setData(Qt.ItemDataRole.UserRole, row["id"])
-                if not row["active"]:
+                if not row["active"] or row.get("deleted_at"):
                     item.setForeground(QColor(COLORS["muted"]))
                 self.table.setItem(row_index, column, item)
         self.table.resizeRowsToContents()
@@ -357,6 +364,11 @@ class MasterTab(QWidget):
         if record_id is None:
             QMessageBox.information(self, "Select a record", "Select a row to edit.")
             return
+        if self.entity == "site" and self.rows[record_id].get("deleted_at"):
+            QMessageBox.information(
+                self, "Deleted site", "Restore this site before editing it."
+            )
+            return
         if MasterEditorDialog(
             self.database, self.entity, record_id=record_id, parent=self
         ).exec():
@@ -364,9 +376,16 @@ class MasterTab(QWidget):
 
     def _sync_toggle_text(self) -> None:
         record_id = self.selected_id()
-        active = self.rows.get(record_id, {}).get("active", 1)
-        self.toggle_button.setText("Deactivate" if active else "Reactivate")
-        self.toggle_button.setObjectName("Danger" if active else "Primary")
+        row = self.rows.get(record_id, {})
+        active = row.get("active", 1)
+        deleted = bool(row.get("deleted_at"))
+        self.toggle_button.setText(
+            "Restore" if deleted else "Deactivate" if active else "Reactivate"
+        )
+        self.toggle_button.setObjectName("Primary" if deleted or not active else "Danger")
+        self.edit_button.setEnabled(bool(record_id) and not deleted)
+        if self.delete_button is not None:
+            self.delete_button.setEnabled(bool(record_id) and not deleted)
         self.toggle_button.style().unpolish(self.toggle_button)
         self.toggle_button.style().polish(self.toggle_button)
 
@@ -376,7 +395,10 @@ class MasterTab(QWidget):
             QMessageBox.information(self, "Select a record", "Select a row first.")
             return
         active = bool(self.rows[record_id]["active"])
-        action = "deactivate" if active else "reactivate"
+        if self.entity == "site" and self.rows[record_id].get("deleted_at"):
+            self.database.restore_site(record_id)
+            self.refresh()
+            return
         if active:
             answer = QMessageBox.question(
                 self,
@@ -388,6 +410,28 @@ class MasterTab(QWidget):
                 return
         self.database.set_master_active(self.entity, record_id, not active)
         self.refresh()
+
+    def delete_site(self) -> None:
+        record_id = self.selected_id()
+        if record_id is None:
+            QMessageBox.information(self, "Select a site", "Select a site first.")
+            return
+        answer = QMessageBox.question(
+            self,
+            "Delete site",
+            "Delete this site from the active master list?\n\n"
+            "Existing deployments and reports will keep the site name and can still "
+            "be viewed. You can restore it later.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer == QMessageBox.StandardButton.Yes:
+            try:
+                self.database.soft_delete_site(record_id)
+            except ValueError as exc:
+                QMessageBox.warning(self, "Cannot delete site", str(exc))
+                return
+            self.refresh()
 
 
 class DirectoryDialog(QDialog):
@@ -403,7 +447,7 @@ class DirectoryDialog(QDialog):
         heading.setObjectName("PageTitle")
         layout.addWidget(heading)
         subtitle = QLabel(
-            "Manage employees first, then customers, projects and their deployment sites."
+            "Manage employees, customers and projects, plus an independent master list of sites."
         )
         subtitle.setObjectName("Muted")
         layout.addWidget(subtitle)
@@ -473,7 +517,7 @@ class DeploymentDialog(QDialog):
             subtitle_text = "Update this employee's deployment record."
         else:
             subtitle_text = (
-                "Assign one or several employees to a customer project and site. "
+                "Assign one or several employees to a customer project and any site. "
                 "A day rate applies separately to every selected employee."
             )
         subtitle = QLabel(subtitle_text)
@@ -550,11 +594,25 @@ class DeploymentDialog(QDialog):
         ):
             suffix = "" if row["active"] else " (inactive)"
             self.customer.addItem(row["name"] + suffix, row["id"])
-        self.customer.currentIndexChanged.connect(self._refresh_related)
+        self.customer.currentIndexChanged.connect(self._refresh_projects)
         form.addRow("Customer *", self.customer)
 
         self.project = AdaptiveComboBox()
         self.site = AdaptiveComboBox()
+        self.site.addItem("Select site", None)
+        include_inactive_sites = bool(self.record and not self.is_copy)
+        for row in database.list_master(
+            "site", active_only=not include_inactive_sites
+        ):
+            location = f" · {row['city']}" if row.get("city") else ""
+            suffix = (
+                " (deleted)"
+                if row.get("deleted_at")
+                else ""
+                if row["active"]
+                else " (inactive)"
+            )
+            self.site.addItem(row["name"] + location + suffix, row["id"])
         form.addRow("Project *", self.project)
         form.addRow("Site *", self.site)
 
@@ -629,7 +687,7 @@ class DeploymentDialog(QDialog):
         self.buttons.rejected.connect(self.reject)
         outer.addWidget(self.buttons)
 
-        self._refresh_related()
+        self._refresh_projects()
         if self.record:
             self._load_record()
         self._sync_payment_controls(self.day_basis.isChecked())
@@ -651,16 +709,12 @@ class DeploymentDialog(QDialog):
         if shifted.isValid():
             self.work_date.setDate(shifted)
 
-    def _refresh_related(self) -> None:
+    def _refresh_projects(self) -> None:
         customer_id = self.customer.currentData()
         current_project = self.project.currentData()
-        current_site = self.site.currentData()
         self.project.blockSignals(True)
-        self.site.blockSignals(True)
         self.project.clear()
-        self.site.clear()
         self.project.addItem("Select project", None)
-        self.site.addItem("Select site", None)
         if customer_id:
             for row in self.database.list_master(
                 "project",
@@ -670,25 +724,19 @@ class DeploymentDialog(QDialog):
                 code = f"{row['project_code']} — " if row.get("project_code") else ""
                 suffix = "" if row["active"] else " (inactive)"
                 self.project.addItem(code + row["name"] + suffix, row["id"])
-            for row in self.database.list_master(
-                "site",
-                active_only=not bool(self.record),
-                customer_id=int(customer_id),
-            ):
-                location = f" · {row['city']}" if row.get("city") else ""
-                suffix = "" if row["active"] else " (inactive)"
-                self.site.addItem(row["name"] + location + suffix, row["id"])
         set_combo_value(self.project, current_project)
-        set_combo_value(self.site, current_site)
         self.project.blockSignals(False)
-        self.site.blockSignals(False)
 
     def _load_record(self) -> None:
         assert self.record is not None and self.employee_combo is not None
         set_combo_value(self.employee_combo, self.record["employee_id"])
         set_combo_value(self.customer, self.record["customer_id"])
-        self._refresh_related()
+        self._refresh_projects()
         set_combo_value(self.project, self.record["project_id"])
+        if self.site.findData(self.record["site_id"]) < 0:
+            self.site.addItem(
+                f"{self.record['site_name']} (unavailable)", self.record["site_id"]
+            )
         set_combo_value(self.site, self.record["site_id"])
         self.start_time.setTime(QTime.fromString(self.record["start_time"], "HH:mm"))
         self.end_time.setTime(QTime.fromString(self.record["end_time"], "HH:mm"))

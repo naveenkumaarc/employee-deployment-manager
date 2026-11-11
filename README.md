@@ -10,7 +10,8 @@ Deployment Desk is a modern, offline employee deployment manager built with Pyth
 - Opens a new deployment form when you click an empty date.
 - Opens that day's assignments when you click a date that already has entries.
 - Copies an existing deployment to another date while keeping the original record.
-- Assigns one or many employees to a customer, project and site in one step.
+- Assigns one or many employees to a customer, project and any independently
+  managed site in one step.
 - Records optional day-basis work, an amount per employee per day, and whether
   that payment is completed or pending.
 - Warns when an employee already has another deployment on the selected date.
@@ -66,7 +67,8 @@ The executable is self-contained; Python is not required on the destination PC.
   select a row and use **Copy selected** to schedule the same work on a new date.
 - **Reports:** choose a grouping and any date range, review total/completed/pending
   day-basis amounts, then export the full report to `.xlsx`.
-- **Directory:** deactivate old employees, customers, projects or sites without losing historical records.
+- **Directory:** deactivate old employees, customers or projects; Sites are a
+  standalone master list and can be safely deleted/restored without losing history.
 - **Backup:** use **Back up database** in the sidebar. The exact live database path is shown in the status bar.
 
 Keyboard shortcuts: `Ctrl+1` calendar, `Ctrl+2` history, `Ctrl+3` reports, and `Ctrl+D` directory.
