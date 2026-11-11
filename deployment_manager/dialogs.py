@@ -499,7 +499,26 @@ class DeploymentDialog(QDialog):
         elif self.record and not self.is_copy:
             value_date = QDate.fromString(self.record["work_date"], "yyyy-MM-dd")
         self.work_date = make_date_edit(value_date)
-        form.addRow("Deployment date *", self.work_date)
+        date_row = QWidget()
+        date_layout = QHBoxLayout(date_row)
+        date_layout.setContentsMargins(0, 0, 0, 0)
+        date_layout.setSpacing(10)
+        self.previous_date_button = make_button("<", tooltip="Previous day")
+        self.previous_date_button.setObjectName("PreviousDateButton")
+        self.previous_date_button.setFixedWidth(48)
+        self.previous_date_button.clicked.connect(
+            lambda _checked=False: self.shift_work_date(-1)
+        )
+        self.next_date_button = make_button(">", tooltip="Next day")
+        self.next_date_button.setObjectName("NextDateButton")
+        self.next_date_button.setFixedWidth(48)
+        self.next_date_button.clicked.connect(
+            lambda _checked=False: self.shift_work_date(1)
+        )
+        date_layout.addWidget(self.previous_date_button)
+        date_layout.addWidget(self.work_date, 1)
+        date_layout.addWidget(self.next_date_button)
+        form.addRow("Deployment date *", date_row)
 
         if self.record:
             self.employee_combo = AdaptiveComboBox()
@@ -625,6 +644,12 @@ class DeploymentDialog(QDialog):
                 "Directory setup required",
                 "Add active employees, customers, projects and sites in the Directory first.",
             )
+
+    def shift_work_date(self, days: int) -> None:
+        """Move only the deployment date, preserving every other form value."""
+        shifted = self.work_date.date().addDays(days)
+        if shifted.isValid():
+            self.work_date.setDate(shifted)
 
     def _refresh_related(self) -> None:
         customer_id = self.customer.currentData()

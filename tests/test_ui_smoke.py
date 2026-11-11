@@ -175,3 +175,28 @@ def test_copy_dialog_uses_next_date_and_resets_completion(tmp_path):
         app.processEvents()
     finally:
         database.close()
+
+
+def test_deployment_date_navigation_preserves_form_state_and_rolls_over(tmp_path):
+    app = QApplication.instance() or QApplication([])
+    database = Database(tmp_path / "date_navigation.db")
+    try:
+        seed(database)
+        dialog = DeploymentDialog(database, initial_date=QDate(2026, 12, 31))
+        dialog.notes.setPlainText("Keep this work scope")
+        dialog.day_basis.setChecked(True)
+        dialog.day_rate.setValue(2750)
+
+        dialog.next_date_button.click()
+        assert dialog.work_date.date() == QDate(2027, 1, 1)
+        assert dialog.notes.toPlainText() == "Keep this work scope"
+        assert dialog.day_rate.value() == 2750
+
+        dialog.work_date.setDate(QDate(2028, 3, 1))
+        dialog.previous_date_button.click()
+        assert dialog.work_date.date() == QDate(2028, 2, 29)
+        assert dialog.work_date.displayFormat() == "dd MMM yyyy"
+        dialog.close()
+        app.processEvents()
+    finally:
+        database.close()
