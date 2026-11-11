@@ -845,8 +845,7 @@ class DayEntriesDialog(QDialog):
         self.changed = False
         self.payment_buttons: dict[int, QPushButton] = {}
         self.setWindowTitle(day.toString("dddd, dd MMMM yyyy"))
-        self.resize(720, 560)
-        self.setMinimumSize(600, 430)
+        self.setMinimumSize(560, 430)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 18, 20, 18)
@@ -876,6 +875,9 @@ class DayEntriesDialog(QDialog):
 
         self.scroll = QScrollArea()
         self.scroll.setWidgetResizable(True)
+        self.scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
         self.container = QWidget()
         self.cards = QVBoxLayout(self.container)
         self.cards.setContentsMargins(2, 8, 8, 8)
@@ -893,6 +895,26 @@ class DayEntriesDialog(QDialog):
         controls.addWidget(close)
         layout.addLayout(controls)
         self._rebuild()
+        self._fit_to_available_screen()
+
+    @staticmethod
+    def _fitted_dialog_size(available: QSize) -> QSize:
+        """Choose a roomy size while staying inside the current monitor."""
+        width = min(1200, max(720, int(available.width() * 0.9)))
+        height = min(850, max(520, int(available.height() * 0.88)))
+        width = min(width, max(560, available.width() - 32))
+        height = min(height, max(430, available.height() - 32))
+        return QSize(width, height)
+
+    def _fit_to_available_screen(self) -> None:
+        screen = self.parentWidget().screen() if self.parentWidget() else self.screen()
+        if screen is None:
+            return
+        available = screen.availableGeometry()
+        self.resize(self._fitted_dialog_size(available.size()))
+        frame = self.frameGeometry()
+        frame.moveCenter(available.center())
+        self.move(frame.topLeft())
 
     def shift_day(self, days: int) -> None:
         """View another date without closing the per-date deployment window."""
@@ -953,6 +975,7 @@ class DayEntriesDialog(QDialog):
             )
             heading.setObjectName("SectionTitle")
             heading.setTextFormat(Qt.TextFormat.PlainText)
+            heading.setWordWrap(True)
             details.addWidget(heading)
             meta = QLabel(
                 f"{row['customer_name']}  •  {row['site_name']}"
@@ -960,6 +983,7 @@ class DayEntriesDialog(QDialog):
             )
             meta.setObjectName("Muted")
             meta.setTextFormat(Qt.TextFormat.PlainText)
+            meta.setWordWrap(True)
             details.addWidget(meta)
             timing = QLabel(
                 f"{row['start_time']}–{row['end_time']}  •  "

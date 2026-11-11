@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import os
 
+import pytest
+
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QCoreApplication, QDate, QEvent
+from PySide6.QtCore import QCoreApplication, QDate, QEvent, QSize, Qt
 from PySide6.QtGui import QImage
 from PySide6.QtWidgets import QApplication, QLabel, QMessageBox
 
@@ -13,6 +15,19 @@ from deployment_manager.dialogs import DayEntriesDialog, DeploymentDialog
 from deployment_manager.icons import write_icon_assets
 from deployment_manager.main_window import MainWindow
 from deployment_manager.theme import APP_STYLE
+
+
+@pytest.fixture(autouse=True)
+def clean_up_qt_windows():
+    yield
+    app = QApplication.instance()
+    if app is None:
+        return
+    for widget in app.topLevelWidgets():
+        widget.close()
+        widget.deleteLater()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    app.processEvents()
 
 
 def seed(database: Database) -> None:
@@ -311,6 +326,17 @@ def test_per_date_window_navigates_days_without_closing(tmp_path):
         database.add_deployments(values, [source["employee_id"]])
 
         dialog = DayEntriesDialog(database, QDate(2026, 12, 31))
+        assert DayEntriesDialog._fitted_dialog_size(QSize(1920, 1080)) == QSize(
+            1200, 850
+        )
+        expected_size = DayEntriesDialog._fitted_dialog_size(
+            dialog.screen().availableGeometry().size()
+        )
+        assert dialog.size() == expected_size
+        assert (
+            dialog.scroll.horizontalScrollBarPolicy()
+            == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
         dialog.show()
         app.processEvents()
         assert dialog.isVisible()
