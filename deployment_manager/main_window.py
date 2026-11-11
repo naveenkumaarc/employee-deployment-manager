@@ -24,7 +24,6 @@ from .database import Database
 from .dialogs import DeploymentDialog, DirectoryDialog
 from .icons import app_icon
 from .pages import CalendarPage, HistoryPage, ReportsPage
-from .theme import COLORS
 from .widgets import make_button
 
 
@@ -79,7 +78,7 @@ class MainWindow(QMainWindow):
         sidebar.setObjectName("Sidebar")
         sidebar.setFixedWidth(286)
         layout = QVBoxLayout(sidebar)
-        layout.setContentsMargins(22, 23, 22, 20)
+        layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(10)
 
         brand_row = QHBoxLayout()
@@ -134,11 +133,7 @@ class MainWindow(QMainWindow):
 
         layout.addStretch()
 
-        backup = make_button("Back up database")
-        backup.setStyleSheet(
-            "QPushButton { color:#5D252C; background:#E8A8AE; border:none; }"
-            "QPushButton:hover { background:#DB9198; color:#4F1F25; }"
-        )
+        backup = make_button("Back up database", role="Accent")
         backup.clicked.connect(self.backup_database)
         layout.addWidget(backup)
 
@@ -150,20 +145,13 @@ class MainWindow(QMainWindow):
 
     def _sidebar_stat(self, value: str, caption: str) -> tuple[QFrame, QLabel]:
         frame = QFrame()
-        frame.setStyleSheet(
-            "QFrame { background:#E8A8AE; border-radius:11px; }"
-            "QLabel { background:transparent; }"
-        )
+        frame.setObjectName("SidebarStat")
         frame_layout = QHBoxLayout(frame)
         frame_layout.setContentsMargins(13, 8, 13, 8)
         value_label = QLabel(value)
-        value_label.setStyleSheet(
-            "color:#5D252C; font-size:16pt; font-weight:750; background:transparent;"
-        )
+        value_label.setObjectName("SidebarStatValue")
         caption_label = QLabel(caption)
-        caption_label.setStyleSheet(
-            "color:#73363D; background:transparent; font-size:9pt;"
-        )
+        caption_label.setObjectName("SidebarStatCaption")
         frame_layout.addWidget(value_label)
         frame_layout.addWidget(caption_label, 1)
         return frame, value_label

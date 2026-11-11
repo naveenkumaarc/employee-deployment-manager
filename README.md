@@ -21,8 +21,8 @@ Deployment Desk is a modern, offline employee deployment manager built with Pyth
 - Filters history and reports by pending or completed payment status.
 - Exports formatted summary and detailed worksheets to Excel.
 - Stores data locally in SQLite and includes a one-click database backup.
-- Opens maximized with a polished light blush-pastel SoftMaterial sidebar and
-  a matching transparent rounded-square icon.
+- Opens maximized with an Inter-first, green-and-white interface based on the
+  product design system and a matching transparent rounded-square icon.
 - Prevents accidental mouse-wheel changes in date, time, amount and selection fields.
 
 ## Start on Windows
@@ -59,7 +59,7 @@ The executable is self-contained; Python is not required on the destination PC.
 
 ## Everyday workflow
 
-- **Create deployment:** use the coral button in the left sidebar, or press `Ctrl+N`.
+- **Create deployment:** use the button in the left sidebar, or press `Ctrl+N`.
 - **Calendar:** click an empty date to add work; click a populated date to review,
   copy, edit, delete or add more.
 - **History:** filter by date, employee, customer, project, site, status or payment;

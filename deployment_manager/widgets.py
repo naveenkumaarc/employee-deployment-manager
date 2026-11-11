@@ -27,7 +27,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .theme import COLORS
+from .theme import COLORS, THEME
 
 
 def format_currency(value: Any) -> str:
@@ -200,11 +200,15 @@ def make_table(columns: list[str]) -> QTableWidget:
     return table
 
 
-def add_soft_shadow(widget: QWidget, radius: int = 24, opacity: int = 25) -> None:
+def add_soft_shadow(
+    widget: QWidget,
+    radius: int = int(THEME["shadow"]["blur"]),
+    opacity: int = int(THEME["shadow"]["alpha"]),
+) -> None:
     shadow = QGraphicsDropShadowEffect(widget)
     shadow.setBlurRadius(radius)
-    shadow.setOffset(0, 6)
-    shadow.setColor(QColor(23, 32, 51, opacity))
+    shadow.setOffset(0, int(THEME["shadow"]["offset_y"]))
+    shadow.setColor(QColor(0, 0, 0, opacity))
     widget.setGraphicsEffect(shadow)
 
 
@@ -229,11 +233,12 @@ class MetricCard(QFrame):
         self,
         label: str,
         value: str = "0",
-        accent: str = "#D86F78",
+        accent: str = COLORS["primary"],
         parent: QWidget | None = None,
     ):
         super().__init__(parent)
         self.setObjectName("MetricCard")
+        add_soft_shadow(self)
         self.setMinimumHeight(92)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(16, 13, 16, 13)
@@ -297,31 +302,39 @@ class MonthCalendar(QCalendarWidget):
             self._calendar_grid.setVerticalScrollBarPolicy(
                 Qt.ScrollBarPolicy.ScrollBarAlwaysOff
             )
-        self.setStyleSheet(
-            """
+        calendar_style = """
             QCalendarWidget {
-                background: white;
-                border: 1px solid #E3E9F2;
-                border-radius: 16px;
+                background: @surface;
+                border: 1px solid @border;
+                border-radius: 8px;
             }
             QCalendarWidget QAbstractItemView {
-                background: white;
-                color: #172033;
+                background: @surface;
+                color: @text;
                 selection-background-color: transparent;
-                selection-color: #172033;
+                selection-color: @text;
                 border: none;
-                font-weight: 650;
+                font-weight: 600;
             }
             QCalendarWidget QHeaderView::section {
-                background: #F4F7FB;
-                color: #526075;
+                background: @surface_alt;
+                color: @muted;
                 min-height: 35px;
                 border: none;
-                border-bottom: 1px solid #E3E9F2;
-                font-weight: 700;
+                border-bottom: 1px solid @border;
+                font-weight: 600;
             }
             """
-        )
+        for token, color in (
+            ("surface_alt", COLORS["surface_alt"]),
+            ("surface", COLORS["surface"]),
+            ("border", COLORS["border_strong"]),
+            ("muted", COLORS["muted"]),
+            ("text", COLORS["text"]),
+        ):
+            calendar_style = calendar_style.replace(f"@{token}", color)
+        self.setStyleSheet(calendar_style)
+        add_soft_shadow(self)
 
     def _fit_calendar_rows(self) -> None:
         """Fit every week row into the viewport, including a possible header row."""
@@ -381,9 +394,9 @@ class MonthCalendar(QCalendarWidget):
         today = value == QDate.currentDate()
         events = self.events_for(value)
 
-        background = QColor("#FFFFFF") if in_month else QColor("#F7F9FC")
+        background = QColor(COLORS["surface"]) if in_month else QColor(COLORS["surface_alt"])
         if not in_month and events:
-            background = QColor("#F1F3FF")
+            background = QColor(COLORS["primary_soft"])
         if selected:
             background = QColor(COLORS["primary_soft"])
         painter.fillRect(rect, background)
@@ -410,7 +423,7 @@ class MonthCalendar(QCalendarWidget):
             if not in_month and events:
                 number_color = QColor(COLORS["primary"])
             elif not in_month:
-                number_color = QColor("#AAB4C4")
+                number_color = QColor("#9A9D99")
             elif value.dayOfWeek() == Qt.DayOfWeek.Sunday:
                 number_color = QColor(COLORS["accent"])
             else:
@@ -435,7 +448,7 @@ class MonthCalendar(QCalendarWidget):
             chip = QRect(rect.left() + 6, y, max(20, rect.width() - 12), 18)
             color = QColor(event.get("employee_color") or COLORS["primary"])
             if event.get("status") == "Cancelled":
-                color = QColor("#9AA6B7")
+                color = QColor("#8A8E89")
             soft = QColor(color)
             soft.setAlpha(42)
             painter.setPen(Qt.PenStyle.NoPen)
@@ -449,7 +462,7 @@ class MonthCalendar(QCalendarWidget):
             label = metrics.elidedText(
                 label, Qt.TextElideMode.ElideRight, text_rect.width()
             )
-            painter.setPen(QColor("#27344A"))
+            painter.setPen(QColor(COLORS["heading"]))
             painter.drawText(
                 text_rect,
                 Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,

@@ -74,8 +74,8 @@ def test_icon_assets_have_transparent_rounded_corners(tmp_path):
     assert image.width() == 512
     assert image.pixelColor(0, 0).alpha() == 0
     assert image.pixelColor(256, 256).alpha() == 255
-    rose_pixel = image.pixelColor(256, 64)
-    assert rose_pixel.red() > rose_pixel.blue()
+    green_pixel = image.pixelColor(256, 64)
+    assert green_pixel.green() > green_pixel.red()
     assert ico_path.exists()
     assert ico_path.stat().st_size > 1000
     app.processEvents()

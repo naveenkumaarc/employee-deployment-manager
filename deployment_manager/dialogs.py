@@ -34,6 +34,7 @@ from .widgets import (
     AdaptiveComboBox,
     WheelSafeDoubleSpinBox,
     WheelSafeTimeEdit,
+    add_soft_shadow,
     format_currency,
     make_button,
     make_date_edit,
@@ -42,8 +43,8 @@ from .widgets import (
 )
 
 EMPLOYEE_COLORS = [
-    ("Pastel rose", "#D86F78"),
-    ("Coral", "#E9858D"),
+    ("Brand green", "#00643C"),
+    ("Leaf", "#3A7D44"),
     ("Teal", "#19B8A4"),
     ("Amber", "#F3A83B"),
     ("Violet", "#8B5CF6"),
@@ -842,6 +843,7 @@ class DayEntriesDialog(QDialog):
         for row in rows:
             card = QFrame()
             card.setObjectName("Card")
+            add_soft_shadow(card)
             card_layout = QHBoxLayout(card)
             card_layout.setContentsMargins(13, 11, 11, 11)
 
@@ -879,11 +881,7 @@ class DayEntriesDialog(QDialog):
                     f"Day basis  •  {format_currency(row.get('day_rate'))} per day  •  "
                     + ("Payment completed" if completed else "Payment pending")
                 )
-                payment.setStyleSheet(
-                    "color: #14947E; font-weight: 700;"
-                    if completed
-                    else "color: #B7791F; font-weight: 700;"
-                )
+                payment.setObjectName("PaidText" if completed else "PendingText")
                 details.addWidget(payment)
             if row.get("notes"):
                 note = QLabel(row["notes"])

@@ -28,6 +28,7 @@ from .widgets import (
     MonthCalendar,
     PageHeading,
     SearchBox,
+    add_soft_shadow,
     fill_combo,
     format_currency,
     make_button,
@@ -82,7 +83,7 @@ def _add_payment_filters(combo: AdaptiveComboBox) -> None:
 def _populate_detail_table(table, rows: list[dict[str, Any]]) -> None:
     table.setRowCount(len(rows))
     status_colors = {
-        "Scheduled": QColor("#536177"),
+        "Scheduled": QColor(COLORS["muted"]),
         "Confirmed": QColor(COLORS["primary"]),
         "Completed": QColor(COLORS["success"]),
         "Cancelled": QColor(COLORS["danger"]),
@@ -165,6 +166,7 @@ class CalendarPage(QWidget):
 
         toolbar = QFrame()
         toolbar.setObjectName("ToolbarCard")
+        add_soft_shadow(toolbar)
         tool_layout = QHBoxLayout(toolbar)
         tool_layout.setContentsMargins(12, 9, 12, 9)
         tool_layout.setSpacing(8)
@@ -263,6 +265,7 @@ class HistoryPage(QWidget):
 
         filters = QFrame()
         filters.setObjectName("Card")
+        add_soft_shadow(filters)
         filter_layout = QVBoxLayout(filters)
         filter_layout.setContentsMargins(14, 13, 14, 13)
         filter_layout.setSpacing(10)
@@ -495,6 +498,7 @@ class ReportsPage(QWidget):
 
         filters = QFrame()
         filters.setObjectName("Card")
+        add_soft_shadow(filters)
         filter_layout = QVBoxLayout(filters)
         filter_layout.setContentsMargins(14, 13, 14, 13)
         filter_layout.setSpacing(10)
@@ -785,13 +789,13 @@ class ReportsPage(QWidget):
         summary.sheet_view.showGridLines = False
         summary.merge_cells("A1:G1")
         summary["A1"] = "Deployment Desk — Deployment & Payment Report"
-        summary["A1"].font = Font(size=18, bold=True, color="172033")
+        summary["A1"].font = Font(size=18, bold=True, color="0E0F0C")
         summary["A1"].alignment = Alignment(vertical="center")
         summary.row_dimensions[1].height = 34
 
         row_cursor = 3
         for label, value in self._filter_description():
-            summary.cell(row_cursor, 1, label).font = Font(bold=True, color="536177")
+            summary.cell(row_cursor, 1, label).font = Font(bold=True, color="626762")
             summary.cell(row_cursor, 2, value)
             row_cursor += 1
         row_cursor += 1
@@ -805,9 +809,9 @@ class ReportsPage(QWidget):
             "Payment completed",
             "Payment pending",
         ]
-        header_fill = PatternFill("solid", fgColor="526DFE")
+        header_fill = PatternFill("solid", fgColor="00643C")
         header_font = Font(bold=True, color="FFFFFF")
-        thin = Side(style="thin", color="E3E9F2")
+        thin = Side(style="thin", color="DADDD9")
         for column, header in enumerate(headers, 1):
             cell = summary.cell(row_cursor, column, header)
             cell.fill = header_fill
@@ -856,8 +860,8 @@ class ReportsPage(QWidget):
         row_cursor += 1
         for column, value in enumerate(totals, 1):
             cell = summary.cell(row_cursor, column, value)
-            cell.font = Font(bold=True, color="172033")
-            cell.fill = PatternFill("solid", fgColor="EEF1FF")
+            cell.font = Font(bold=True, color="0E0F0C")
+            cell.fill = PatternFill("solid", fgColor="E8F3EE")
             cell.border = Border(top=thin, bottom=thin)
             if column >= 5:
                 cell.number_format = '₹#,##0.00'
