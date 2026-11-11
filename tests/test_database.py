@@ -222,7 +222,9 @@ def test_day_basis_payment_fields_and_filters(database: Database):
     completed.update(
         {"day_basis": True, "day_rate": 2200.0, "payment_completed": True}
     )
-    database.add_deployments(completed, [ids["employee_two"]])
+    completed_id = database.add_deployments(completed, [ids["employee_two"]])[0]
+    assert database.get_deployment(completed_id)["payment_completed"] == 0
+    database.set_payment_completed(completed_id, True)
 
     ordinary = deployment_values(ids, "2026-09-02")
     database.add_deployments(ordinary, [ids["employee_one"]])
@@ -239,11 +241,18 @@ def test_day_basis_payment_fields_and_filters(database: Database):
         database.list_deployments(day_basis=True, payment_completed=True)
     ) == 1
 
+    database.set_payment_completed(pending_id, True)
+    assert database.get_deployment(pending_id)["payment_completed"] == 1
+
     update = database.get_deployment(pending_id)
     assert update is not None
-    update["payment_completed"] = True
+    update["status"] = "Completed"
     database.update_deployment(pending_id, update)
     assert database.get_deployment(pending_id)["payment_completed"] == 1
+
+    ordinary_id = database.list_deployments(day_basis=False)[0]["id"]
+    with pytest.raises(ValueError, match="only to day-basis"):
+        database.set_payment_completed(ordinary_id, True)
 
 
 def test_calendar_grid_includes_adjacent_month_entries(database: Database):

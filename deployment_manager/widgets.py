@@ -3,10 +3,16 @@ from __future__ import annotations
 from typing import Any, Iterable
 
 from PySide6.QtCore import QDate, QRect, Qt, Signal
-from PySide6.QtGui import QColor, QFontMetrics, QPainter, QPen, QWheelEvent
+from PySide6.QtGui import (
+    QColor,
+    QFontMetrics,
+    QPainter,
+    QPen,
+    QTextCharFormat,
+    QWheelEvent,
+)
 from PySide6.QtWidgets import (
     QAbstractItemView,
-    QAbstractSpinBox,
     QCalendarWidget,
     QComboBox,
     QDateEdit,
@@ -106,20 +112,12 @@ class WheelSafeDateEdit(QDateEdit):
 class WheelSafeTimeEdit(QTimeEdit):
     """Time field without legacy spin buttons or mouse-wheel changes."""
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
-
     def wheelEvent(self, event: QWheelEvent) -> None:
         event.ignore()
 
 
 class WheelSafeDoubleSpinBox(QDoubleSpinBox):
     """Numeric field that changes only through deliberate typing/keyboard input."""
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
 
     def wheelEvent(self, event: QWheelEvent) -> None:
         event.ignore()
@@ -180,6 +178,10 @@ def make_date_edit(value: QDate | None = None) -> QDateEdit:
     calendar.setHorizontalHeaderFormat(
         QCalendarWidget.HorizontalHeaderFormat.ShortDayNames
     )
+    weekday_format = QTextCharFormat()
+    weekday_format.setForeground(QColor(COLORS["text"]))
+    for weekday in Qt.DayOfWeek:
+        calendar.setWeekdayTextFormat(weekday, weekday_format)
     return edit
 
 
@@ -287,6 +289,10 @@ class MonthCalendar(QCalendarWidget):
             QCalendarWidget.HorizontalHeaderFormat.ShortDayNames
         )
         self.setFirstDayOfWeek(Qt.DayOfWeek.Monday)
+        weekday_format = QTextCharFormat()
+        weekday_format.setForeground(QColor(COLORS["text"]))
+        for weekday in Qt.DayOfWeek:
+            self.setWeekdayTextFormat(weekday, weekday_format)
         self.setMinimumHeight(620)
         self.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding

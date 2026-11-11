@@ -458,9 +458,7 @@ class Database:
         )
         day_basis = int(bool(values.get("day_basis", False)))
         day_rate = float(values.get("day_rate", 0) or 0) if day_basis else 0.0
-        payment_completed = (
-            int(bool(values.get("payment_completed", False))) if day_basis else 0
-        )
+        payment_completed = 0
         now = utc_now()
         created: list[int] = []
         try:
@@ -508,9 +506,12 @@ class Database:
         )
         day_basis = int(bool(values.get("day_basis", False)))
         day_rate = float(values.get("day_rate", 0) or 0) if day_basis else 0.0
-        payment_completed = (
-            int(bool(values.get("payment_completed", False))) if day_basis else 0
-        )
+        existing = self.connection.execute(
+            "SELECT payment_completed FROM deployments WHERE id = ?", (deployment_id,)
+        ).fetchone()
+        if existing is None:
+            raise ValueError("The selected deployment no longer exists.")
+        payment_completed = int(existing["payment_completed"]) if day_basis else 0
         try:
             with self.connection:
                 cursor = self.connection.execute(
@@ -548,6 +549,27 @@ class Database:
     def delete_deployment(self, deployment_id: int) -> None:
         self.connection.execute("DELETE FROM deployments WHERE id = ?", (deployment_id,))
         self.connection.commit()
+
+    def set_payment_completed(self, deployment_id: int, completed: bool) -> None:
+        """Update payment state only for an existing day-basis deployment."""
+        cursor = self.connection.execute(
+            """
+            UPDATE deployments
+            SET payment_completed = ?, updated_at = ?
+            WHERE id = ? AND day_basis = 1
+            """,
+            (int(completed), utc_now(), deployment_id),
+        )
+        if cursor.rowcount == 1:
+            self.connection.commit()
+            return
+        self.connection.rollback()
+        exists = self.connection.execute(
+            "SELECT day_basis FROM deployments WHERE id = ?", (deployment_id,)
+        ).fetchone()
+        if exists is None:
+            raise ValueError("The selected deployment no longer exists.")
+        raise ValueError("Payment status applies only to day-basis deployments.")
 
     def get_deployment(self, deployment_id: int) -> dict[str, Any] | None:
         rows = self.list_deployments(deployment_id=deployment_id)

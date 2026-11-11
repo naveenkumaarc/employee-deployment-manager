@@ -12,8 +12,8 @@ Deployment Desk is a modern, offline employee deployment manager built with Pyth
 - Copies an existing deployment to another date while keeping the original record.
 - Assigns one or many employees to a customer, project and any independently
   managed site in one step.
-- Records optional day-basis work, an amount per employee per day, and whether
-  that payment is completed or pending.
+- Records optional day-basis work and an amount per employee per day. After the
+  deployment is created, payment is completed or undone from that date's view.
 - Warns when an employee already has another deployment on the selected date.
 - Maintains employee, customer, project and site directories.
 - Provides searchable, filterable history with edit and delete actions.
@@ -62,7 +62,8 @@ The executable is self-contained; Python is not required on the destination PC.
 
 - **Create deployment:** use the button in the left sidebar, or press `Ctrl+N`.
 - **Calendar:** click an empty date to add work; click a populated date to review,
-  copy, edit, delete or add more.
+  copy, edit, delete or add more. Day-basis entries expose **Mark Payment
+  Complete** there and show a **Paid** badge once completed.
 - **History:** filter by date, employee, customer, project, site, status or payment;
   select a row and use **Copy selected** to schedule the same work on a new date.
 - **Reports:** choose a grouping and any date range, review total/completed/pending
@@ -85,6 +86,19 @@ python -m PyInstaller --noconfirm --clean DeploymentDesk.spec
 ```
 
 The result is `dist\DeploymentDesk.exe`.
+
+On Linux, use the equivalent project-local environment commands:
+
+```bash
+python -m venv .venv
+.venv/bin/python -m pip install -r requirements-dev.txt
+QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest -q
+.venv/bin/python -m PyInstaller --noconfirm --clean DeploymentDesk.spec
+```
+
+The Linux desktop executable is `dist/DeploymentDesk`. PyInstaller builds for
+the host platform, so Windows and Linux artifacts must be produced on their
+respective operating systems rather than cross-compiled.
 
 ## Data and privacy
 

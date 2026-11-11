@@ -357,7 +357,9 @@ QCalendarWidget QAbstractItemView {
 }
 QCalendarWidget QAbstractItemView:disabled { color: #9A9D99; }
 """
-    for name, value in tokens.items():
+    # Replace longest names first: `color_primary` is a prefix of
+    # `color_primary_soft`, for example.
+    for name, value in sorted(tokens.items(), key=lambda item: len(item[0]), reverse=True):
         style = style.replace(f"@{name}", str(value))
     return style
 

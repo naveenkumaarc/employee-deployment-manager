@@ -6,12 +6,13 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QDate
 from PySide6.QtGui import QImage
-from PySide6.QtWidgets import QApplication, QAbstractSpinBox
+from PySide6.QtWidgets import QApplication, QLabel, QMessageBox
 
 from deployment_manager.database import Database
-from deployment_manager.dialogs import DeploymentDialog
+from deployment_manager.dialogs import DayEntriesDialog, DeploymentDialog
 from deployment_manager.icons import write_icon_assets
 from deployment_manager.main_window import MainWindow
+from deployment_manager.theme import APP_STYLE
 
 
 def seed(database: Database) -> None:
@@ -80,6 +81,16 @@ def test_icon_assets_have_transparent_rounded_corners(tmp_path):
     app.processEvents()
 
 
+def test_theme_tokens_render_without_partial_placeholder_suffixes():
+    assert "@color_" not in APP_STYLE
+    assert "@font_" not in APP_STYLE
+    assert "_soft" not in APP_STYLE
+    assert "_hover" not in APP_STYLE
+    assert "_pressed" not in APP_STYLE
+    assert "_strong" not in APP_STYLE
+    assert "_alt" not in APP_STYLE
+
+
 def test_main_window_and_deployment_dialog_render_offscreen(tmp_path):
     app = QApplication.instance() or QApplication([])
     database = Database(tmp_path / "ui.db")
@@ -92,18 +103,10 @@ def test_main_window_and_deployment_dialog_render_offscreen(tmp_path):
         assert not dialog.payment_panel.isHidden()
         dialog.day_rate.setValue(1500)
         assert dialog._values()["day_rate"] == 1500
-        assert (
-            dialog.start_time.buttonSymbols()
-            == QAbstractSpinBox.ButtonSymbols.NoButtons
-        )
-        assert (
-            dialog.end_time.buttonSymbols()
-            == QAbstractSpinBox.ButtonSymbols.NoButtons
-        )
-        assert (
-            dialog.day_rate.buttonSymbols()
-            == QAbstractSpinBox.ButtonSymbols.NoButtons
-        )
+        assert "payment_completed" not in dialog._values()
+        assert dialog.start_time.text() == "09:00 AM"
+        assert dialog.end_time.text() == "06:00 PM"
+        assert dialog.day_rate.text().strip() == "₹ 1,500.00"
         dialog.close()
 
         window = MainWindow(database, tmp_path)
@@ -152,8 +155,8 @@ def test_copy_dialog_uses_next_date_and_resets_completion(tmp_path):
         seed(database)
         source = database.list_deployments()[0]
         source["status"] = "Completed"
-        source["payment_completed"] = True
         database.update_deployment(source["id"], source)
+        database.set_payment_completed(source["id"], True)
 
         dialog = DeploymentDialog(database, copy_from_id=source["id"])
         values = dialog._values()
@@ -165,7 +168,7 @@ def test_copy_dialog_uses_next_date_and_resets_completion(tmp_path):
             "yyyy-MM-dd"
         )
         assert values["status"] == "Scheduled"
-        assert values["payment_completed"] is False
+        assert "payment_completed" not in values
 
         created = database.add_deployments(values, dialog._employee_ids())
         assert len(created) == 1
@@ -226,6 +229,58 @@ def test_deployment_site_picker_lists_all_sites_independent_of_customer(tmp_path
         assert {
             dialog.site.itemData(index) for index in range(1, dialog.site.count())
         } == site_ids
+        dialog.close()
+        app.processEvents()
+    finally:
+        database.close()
+
+
+def test_per_date_payment_action_is_conditional_and_reversible(tmp_path, monkeypatch):
+    app = QApplication.instance() or QApplication([])
+    database = Database(tmp_path / "payment_actions.db")
+    try:
+        seed(database)
+        day = QDate.currentDate()
+        day_basis = database.list_deployments()[0]
+        ordinary_values = {
+            "work_date": day.toString("yyyy-MM-dd"),
+            "customer_id": day_basis["customer_id"],
+            "project_id": day_basis["project_id"],
+            "site_id": day_basis["site_id"],
+            "start_time": "10:00",
+            "end_time": "17:00",
+            "work_type": "Full day",
+            "status": "Scheduled",
+            "day_basis": False,
+            "notes": "No payment action",
+        }
+        ordinary_id = database.add_deployments(
+            ordinary_values, [day_basis["employee_id"]]
+        )[0]
+
+        dialog = DayEntriesDialog(database, day)
+        assert set(dialog.payment_buttons) == {day_basis["id"]}
+        assert ordinary_id not in dialog.payment_buttons
+        assert dialog.payment_buttons[day_basis["id"]].text() == "Mark Payment Complete"
+
+        dialog.payment_buttons[day_basis["id"]].click()
+        app.processEvents()
+        assert database.get_deployment(day_basis["id"])["payment_completed"] == 1
+        assert dialog.payment_buttons[day_basis["id"]].text() == "Undo Payment"
+        assert any(
+            label.objectName() == "PaidBadge" and label.text() == "Paid"
+            for label in dialog.findChildren(QLabel)
+        )
+
+        monkeypatch.setattr(
+            QMessageBox,
+            "question",
+            lambda *args, **kwargs: QMessageBox.StandardButton.Yes,
+        )
+        dialog.payment_buttons[day_basis["id"]].click()
+        app.processEvents()
+        assert database.get_deployment(day_basis["id"])["payment_completed"] == 0
+        assert dialog.payment_buttons[day_basis["id"]].text() == "Mark Payment Complete"
         dialog.close()
         app.processEvents()
     finally:

@@ -511,7 +511,7 @@ class DeploymentDialog(QDialog):
         if self.is_copy:
             subtitle_text = (
                 "Choose the new deployment date. Work details are copied, while "
-                "status starts as Scheduled and payment starts as pending."
+                "status starts as Scheduled. Payment can be completed from the date view."
             )
         elif self.record:
             subtitle_text = "Update this employee's deployment record."
@@ -661,8 +661,6 @@ class DeploymentDialog(QDialog):
         per_day = _plain_label("per employee / day", muted=True)
         payment_layout.addWidget(per_day)
         payment_layout.addStretch()
-        self.payment_completed = QCheckBox("Payment completed")
-        payment_layout.addWidget(self.payment_completed)
         form.addRow("Day rate *", self.payment_panel)
         self.payment_label = form.labelForField(self.payment_panel)
         self.day_basis.toggled.connect(self._sync_payment_controls)
@@ -747,21 +745,15 @@ class DeploymentDialog(QDialog):
         if index >= 0:
             self.status.setCurrentIndex(index)
         self.day_rate.setValue(float(self.record.get("day_rate") or 0))
-        self.payment_completed.setChecked(
-            bool(self.record.get("payment_completed", 0))
-        )
         self.day_basis.setChecked(bool(self.record.get("day_basis", 0)))
         self.notes.setPlainText(self.record.get("notes") or "")
         if self.is_copy:
             self.status.setCurrentText("Scheduled")
-            self.payment_completed.setChecked(False)
 
     def _sync_payment_controls(self, enabled: bool) -> None:
         self.payment_panel.setVisible(enabled)
         if self.payment_label is not None:
             self.payment_label.setVisible(enabled)
-        if not enabled:
-            self.payment_completed.setChecked(False)
 
     def _employee_ids(self) -> list[int]:
         if self.employee_combo is not None:
@@ -787,9 +779,6 @@ class DeploymentDialog(QDialog):
             "status": self.status.currentText(),
             "day_basis": self.day_basis.isChecked(),
             "day_rate": self.day_rate.value() if self.day_basis.isChecked() else 0,
-            "payment_completed": (
-                self.payment_completed.isChecked() if self.day_basis.isChecked() else False
-            ),
             "notes": self.notes.toPlainText().strip(),
         }
 
@@ -854,6 +843,7 @@ class DayEntriesDialog(QDialog):
         self.database = database
         self.day = day
         self.changed = False
+        self.payment_buttons: dict[int, QPushButton] = {}
         self.setWindowTitle(day.toString("dddd, dd MMMM yyyy"))
         self.resize(720, 560)
         self.setMinimumSize(600, 430)
@@ -903,6 +893,7 @@ class DayEntriesDialog(QDialog):
 
     def _rebuild(self) -> None:
         self._clear_cards()
+        self.payment_buttons = {}
         rows = self._rows()
         self.count_label.setText(
             f"{len(rows)} deployment{'s' if len(rows) != 1 else ''}"
@@ -950,12 +941,17 @@ class DayEntriesDialog(QDialog):
             details.addWidget(timing)
             if row.get("day_basis"):
                 completed = bool(row.get("payment_completed"))
+                payment_row = QHBoxLayout()
                 payment = QLabel(
-                    f"Day basis  •  {format_currency(row.get('day_rate'))} per day  •  "
-                    + ("Payment completed" if completed else "Payment pending")
+                    f"Day basis  •  {format_currency(row.get('day_rate'))} per day"
                 )
                 payment.setObjectName("PaidText" if completed else "PendingText")
-                details.addWidget(payment)
+                badge = QLabel("Paid" if completed else "Payment pending")
+                badge.setObjectName("PaidBadge" if completed else "PendingBadge")
+                payment_row.addWidget(payment)
+                payment_row.addWidget(badge)
+                payment_row.addStretch()
+                details.addLayout(payment_row)
             if row.get("notes"):
                 note = QLabel(row["notes"])
                 note.setWordWrap(True)
@@ -963,6 +959,27 @@ class DayEntriesDialog(QDialog):
                 details.addWidget(note)
             card_layout.addLayout(details, 1)
 
+            actions = QVBoxLayout()
+            actions.setSpacing(8)
+            if row.get("day_basis"):
+                completed = bool(row.get("payment_completed"))
+                payment_action = make_button(
+                    "Undo Payment" if completed else "Mark Payment Complete",
+                    role="" if completed else "Primary",
+                )
+                payment_action.setProperty(
+                    "paymentAction", "undo" if completed else "complete"
+                )
+                payment_action.clicked.connect(
+                    lambda _checked=False,
+                    item_id=row["id"],
+                    target=not completed: self._set_payment_completed(item_id, target)
+                )
+                self.payment_buttons[int(row["id"])] = payment_action
+                actions.addWidget(payment_action)
+
+            record_actions = QHBoxLayout()
+            record_actions.setSpacing(8)
             copy = make_button("Copy")
             edit = make_button("Edit")
             delete = make_button("Delete", role="Danger")
@@ -975,9 +992,12 @@ class DayEntriesDialog(QDialog):
             delete.clicked.connect(
                 lambda _checked=False, item_id=row["id"]: self._delete(item_id)
             )
-            card_layout.addWidget(copy)
-            card_layout.addWidget(edit)
-            card_layout.addWidget(delete)
+            record_actions.addWidget(copy)
+            record_actions.addWidget(edit)
+            record_actions.addWidget(delete)
+            actions.addLayout(record_actions)
+            actions.addStretch()
+            card_layout.addLayout(actions)
             self.cards.addWidget(card)
         self.cards.addStretch()
 
@@ -1001,6 +1021,25 @@ class DayEntriesDialog(QDialog):
         ).exec():
             self.changed = True
             self._rebuild()
+
+    def _set_payment_completed(self, deployment_id: int, completed: bool) -> None:
+        if not completed:
+            answer = QMessageBox.question(
+                self,
+                "Undo payment completion",
+                "Mark this deployment's payment as pending again?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+        try:
+            self.database.set_payment_completed(deployment_id, completed)
+        except ValueError as exc:
+            QMessageBox.warning(self, "Cannot update payment", str(exc))
+            return
+        self.changed = True
+        self._rebuild()
 
     def _delete(self, deployment_id: int) -> None:
         answer = QMessageBox.question(
