@@ -63,7 +63,8 @@ The executable is self-contained; Python is not required on the destination PC.
 - **Create deployment:** use the button in the left sidebar, or press `Ctrl+N`.
 - **Calendar:** click an empty date to add work; click a populated date to review,
   copy, edit, delete or add more. Day-basis entries expose **Mark Payment
-  Complete** there and show a **Paid** badge once completed.
+  Complete** there and show a **Paid** badge once completed. Use **Previous** and
+  **Next** beside the date to browse other days without closing the window.
 - **History:** filter by date, employee, customer, project, site, status or payment;
   select a row and use **Copy selected** to schedule the same work on a new date.
 - **Reports:** choose a grouping and any date range, review total/completed/pending

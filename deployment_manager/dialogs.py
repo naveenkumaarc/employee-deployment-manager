@@ -851,9 +851,25 @@ class DayEntriesDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 18, 20, 18)
 
-        title = QLabel(day.toString("dddd, dd MMMM yyyy"))
-        title.setObjectName("PageTitle")
-        layout.addWidget(title)
+        title_row = QHBoxLayout()
+        self.title_label = QLabel(day.toString("dddd, dd MMMM yyyy"))
+        self.title_label.setObjectName("PageTitle")
+        title_row.addWidget(self.title_label, 1)
+        self.previous_day_button = make_button(
+            "<  Previous", tooltip="View the previous date"
+        )
+        self.previous_day_button.setObjectName("PreviousEntriesDateButton")
+        self.previous_day_button.clicked.connect(
+            lambda _checked=False: self.shift_day(-1)
+        )
+        self.next_day_button = make_button("Next  >", tooltip="View the next date")
+        self.next_day_button.setObjectName("NextEntriesDateButton")
+        self.next_day_button.clicked.connect(
+            lambda _checked=False: self.shift_day(1)
+        )
+        title_row.addWidget(self.previous_day_button)
+        title_row.addWidget(self.next_day_button)
+        layout.addLayout(title_row)
         self.count_label = QLabel()
         self.count_label.setObjectName("Muted")
         layout.addWidget(self.count_label)
@@ -878,6 +894,17 @@ class DayEntriesDialog(QDialog):
         layout.addLayout(controls)
         self._rebuild()
 
+    def shift_day(self, days: int) -> None:
+        """View another date without closing the per-date deployment window."""
+        shifted = self.day.addDays(days)
+        if not shifted.isValid():
+            return
+        self.day = shifted
+        title = shifted.toString("dddd, dd MMMM yyyy")
+        self.setWindowTitle(title)
+        self.title_label.setText(title)
+        self._rebuild()
+
     def _rows(self) -> list[dict[str, Any]]:
         return self.database.list_deployments(
             date_from=self.day.toString("yyyy-MM-dd"),
@@ -893,6 +920,7 @@ class DayEntriesDialog(QDialog):
 
     def _rebuild(self) -> None:
         self._clear_cards()
+        self.scroll.verticalScrollBar().setValue(0)
         self.payment_buttons = {}
         rows = self._rows()
         self.count_label.setText(
